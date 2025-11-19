@@ -2,10 +2,8 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 from pathlib import Path
-
 from io import BytesIO
 from urllib.parse import quote_plus
-import qrcode
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -19,32 +17,11 @@ st.set_page_config(
     layout="wide",
 )
 
-# คอลัมน์ที่ใช้เป็นรหัสสำหรับ QR
+# ชื่อคอลัมน์รหัสที่ใช้สำหรับสร้าง / หาไฟล์ QR
 EXCEL_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 
-# ตั้งให้ "เหมือน" กับที่ใช้ใน generate_asset_qr.py
-QR_BASE_URL = "https://mem-system-dashboard.streamlit.app"  # <-- แก้ให้ตรงของคุณ
-QR_PAGE_PATH = ""  # ถ้าใช้ root ให้ "", ถ้ามีหน้าเฉพาะเช่น /asset_qr ให้ใส่ "/asset_qr"
-
-
-# =========================
-# Helper: สร้างรูป QR จาก URL
-# =========================
-def make_qr_buffer(url: str) -> BytesIO:
-    qr = qrcode.QRCode(
-        version=2,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=6,
-        border=2,
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
+# โฟลเดอร์เก็บรูปภาพ QR (ต้องมีในโปรเจกต์)
+QR_IMG_DIR = Path("qr_images")
 
 
 # =========================
@@ -300,7 +277,7 @@ def set_main_style():
             border-radius: 999px;
         }
 
-        /* CARD ล้อมกราฟ */
+        /* CARD ล้อมกราฟ / ตาราง */
         .mem-card{
             background: #FFFFFF;
             border-radius: 32px;
@@ -335,6 +312,46 @@ def set_main_style():
 
         .mem-status-table table{
             font-size: 13px;
+        }
+
+        /* การ์ดสถานที่ใช้งาน */
+        .mem-loc-section-title{
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+            color: #111827;
+        }
+        .mem-loc-section-sub{
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 0.6rem;
+        }
+        .mem-loc-grid{
+            display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+            gap: 10px;
+        }
+        .mem-loc-card{
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 8px 12px;
+            box-shadow: 0 6px 16px rgba(15,23,42,0.06);
+            border: 1px solid #e5e7eb;
+        }
+        .mem-loc-rank{
+            font-size: 11px;
+            color: #9ca3af;
+            margin-bottom: 2px;
+        }
+        .mem-loc-name{
+            font-size: 13px;
+            font-weight: 600;
+            color: #111827;
+        }
+        .mem-loc-count{
+            font-size: 12px;
+            color: #4b5563;
+            margin-top: 2px;
         }
         </style>
         """,
@@ -401,6 +418,35 @@ def save_equipment_data(df: pd.DataFrame):
         st.success(f"บันทึกการแก้ไขลงไฟล์: {path.name} เรียบร้อยแล้ว")
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
+
+
+# =========================
+# หาไฟล์รูป QR จากโฟลเดอร์ qr_images
+# =========================
+def find_qr_image_for_code(code: str) -> Path | None:
+    """
+    หารูป QR จากโฟลเดอร์ qr_images โดยใช้รหัสเครื่องมือห้องปฏิบัติการเป็น key
+    รูปแบบไฟล์ที่ลองหา:
+      - *_{code}.png   เช่น 001_LAB-AS-GN-A001.png
+      - {code}.png
+    """
+    code = (code or "").strip()
+    if not code:
+        return None
+    if not QR_IMG_DIR.exists():
+        return None
+
+    pattern1 = f"*_{code}.png"
+    matches = list(QR_IMG_DIR.glob(pattern1))
+    if matches:
+        return matches[0]
+
+    pattern2 = f"{code}.png"
+    matches2 = list(QR_IMG_DIR.glob(pattern2))
+    if matches2:
+        return matches2[0]
+
+    return None
 
 
 # =========================
@@ -524,15 +570,16 @@ def page_home():
     loc_total = 0
     top_loc_name = "ไม่พบข้อมูล"
     top_loc_count = 0
+    loc_counts = pd.DataFrame(columns=["สถานที่ใช้งาน", "count"])
     if loc_col in df.columns:
         loc_series = df[loc_col].dropna()
-        loc_total = int(loc_series.nunique())
         if not loc_series.empty:
             loc_counts = (
                 loc_series.value_counts()
                 .rename_axis("สถานที่ใช้งาน")
                 .reset_index(name="count")
             )
+            loc_total = int(loc_counts["สถานที่ใช้งาน"].nunique())
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
@@ -549,7 +596,6 @@ def page_home():
     cnt_unrepairable = get_count("ชำรุด(ซ่อมแซมไม่ได้)")
     cnt_missing = get_count("ตรวจไม่พบ")
 
-    # --------- Legend HTML ---------
     legend_items = [
         ("พร้อมใช้งาน", color_map["พร้อมใช้งาน"]),
         ("ตรวจไม่พบ", color_map["ตรวจไม่พบ"]),
@@ -684,6 +730,47 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # --------- การ์ดสถานที่ใช้งาน (ล่างกราฟวงกลม) ---------
+    if not loc_counts.empty:
+        st.markdown(
+            """
+            <div class="mem-card">
+                <div class="mem-loc-section-title">สถานที่ใช้งาน (อันดับต้น ๆ)</div>
+                <div class="mem-loc-section-sub">
+                    แสดงสถานที่ที่มีจำนวนครุภัณฑ์มากที่สุดจากข้อมูลในไฟล์ Excel ปัจจุบัน
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        top_n = loc_counts.head(5).reset_index(drop=True)
+
+        cards_html_parts = []
+        for idx, row in top_n.iterrows():
+            rank = idx + 1
+            name = str(row["สถานที่ใช้งาน"])
+            cnt = int(row["count"])
+            cards_html_parts.append(
+                f"""
+                <div class="mem-loc-card">
+                    <div class="mem-loc-rank">#{rank}</div>
+                    <div class="mem-loc-name">{name}</div>
+                    <div class="mem-loc-count">{cnt} รายการ</div>
+                </div>
+                """
+            )
+
+        cards_html = "".join(cards_html_parts)
+        st.markdown(
+            f"""
+            <div class="mem-loc-grid">
+                {cards_html}
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
 
 # =========================
 # Helper: ตาราง + เลือกแถว
@@ -733,7 +820,6 @@ def page_equipment_list():
         unsafe_allow_html=True,
     )
 
-    # ---------- เลือกไฟล์ Excel ----------
     st.markdown("### เลือกไฟล์ Excel ที่ต้องการใช้งาน")
 
     files = get_available_excel_files()
@@ -769,7 +855,6 @@ def page_equipment_list():
                 path = DATA_DIR / current_name
                 st.caption(f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`")
 
-    # ---------- อัปโหลดไฟล์ใหม่ ----------
     with st.expander("📁 อัปโหลดไฟล์ Excel ใหม่ (เพิ่ม/แทนที่ไฟล์เดิม)", expanded=False):
         uploaded = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"])
         if uploaded is not None:
@@ -785,31 +870,14 @@ def page_equipment_list():
             except Exception as e:
                 st.error(f"ไม่สามารถบันทึกไฟล์ได้: {e}")
 
-    # ---------- โหลดข้อมูล & ตาราง ----------
     df = load_equipment_data()
     if df.empty:
         st.info("ยังไม่มีข้อมูลในไฟล์ Excel ที่เลือกอยู่")
         return
 
-    # ถ้ามี ?code=LAB-AS-001 ใน URL ให้เลือกแถวตามนั้น
-    params = st.query_params
-    code_from_url = ""
-    if "code" in params:
-        val = params["code"]
-        if isinstance(val, list):
-            code_from_url = val[0]
-        else:
-            code_from_url = val
-
-    if code_from_url and EXCEL_CODE_COL in df.columns:
-        matches = df.index[df[EXCEL_CODE_COL].astype(str) == str(code_from_url)].tolist()
-        if matches:
-            st.session_state.selected_row_idx = matches[0]
-
     st.markdown("### ตารางรายการครุภัณฑ์")
     equipment_table_with_selection(df)
 
-    # ---------- เลือกครุภัณฑ์จาก selectbox ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
         name = str(row.get("ชื่อครุภัณฑ์", "ไม่ทราบชื่อ"))
@@ -835,7 +903,6 @@ def page_equipment_list():
 
     selected_idx = st.session_state.get("selected_row_idx", 0)
 
-    # ---------- ฟอร์มรายละเอียด ----------
     st.markdown("### รายละเอียดครุภัณฑ์")
     st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
 
@@ -849,35 +916,35 @@ def page_equipment_list():
     left_cols = columns_list[:half]
     right_cols = columns_list[half:]
 
-    col_left, col_right = st.columns(2)
+    # ฟอร์มรายละเอียด + ช่องแสดง QR อยู่ขวาล่าง
+    form_col, qr_col = st.columns([2, 1])
+
     updated_values = {}
 
-    with col_left:
-        for col_name in left_cols:
-            current_val = row.get(col_name, "")
-            new_val = st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"detail_left_{col_name}_{selected_idx}",
-            )
-            updated_values[col_name] = new_val
+    with form_col:
+        col_left, col_right = st.columns(2)
 
-    with col_right:
-        for col_name in right_cols:
-            current_val = row.get(col_name, "")
-            new_val = st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"detail_right_{col_name}_{selected_idx}",
-            )
-            updated_values[col_name] = new_val
+        with col_left:
+            for col_name in left_cols:
+                current_val = row.get(col_name, "")
+                new_val = st.text_input(
+                    str(col_name),
+                    value="" if pd.isna(current_val) else str(current_val),
+                    key=f"detail_left_{col_name}_{selected_idx}",
+                )
+                updated_values[col_name] = new_val
 
-    st.write("")
+        with col_right:
+            for col_name in right_cols:
+                current_val = row.get(col_name, "")
+                new_val = st.text_input(
+                    str(col_name),
+                    value="" if pd.isna(current_val) else str(current_val),
+                    key=f"detail_right_{col_name}_{selected_idx}",
+                )
+                updated_values[col_name] = new_val
 
-    # ---------- ปุ่มบันทึก + แสดง QR ในกรอบขวาล่าง ----------
-    btn_col, qr_col = st.columns([2, 1])
-
-    with btn_col:
+        st.write("")
         if st.button("บันทึกการแก้ไข", type="primary"):
             df_current = load_equipment_data()
 
@@ -899,21 +966,23 @@ def page_equipment_list():
             save_equipment_data(df_current)
             st.rerun()
 
+    # --------- ส่วนแสดง QR Code ---------
     with qr_col:
         st.markdown("#### QR Code ของครุภัณฑ์")
-        if EXCEL_CODE_COL in df.columns:
-            code_value = str(df.iloc[selected_idx][EXCEL_CODE_COL]).strip()
-        else:
-            code_value = ""
+        code_value = str(row.get(EXCEL_CODE_COL, "")).strip()
 
-        if code_value:
-            encoded = quote_plus(code_value)
-            qr_url = f"{QR_BASE_URL}{QR_PAGE_PATH}?code={encoded}"
-            buf = make_qr_buffer(qr_url)
-            st.image(buf, caption=code_value, use_column_width=True)
-            st.caption(qr_url)
+        if not code_value:
+            st.info(f"ยังไม่มีข้อมูลในคอลัมน์ **{EXCEL_CODE_COL}** สำหรับรายการนี้")
         else:
-            st.info("ไม่มีรหัสเครื่องมือห้องปฏิบัติการสำหรับสร้าง QR")
+            qr_path = find_qr_image_for_code(code_value)
+            if qr_path and qr_path.exists():
+                st.image(str(qr_path), caption=code_value, use_column_width=True)
+                st.caption(f"รหัสเครื่องมือห้องปฏิบัติการ: {code_value}")
+            else:
+                st.warning(
+                    f"ไม่พบไฟล์ QR ในโฟลเดอร์ `qr_images` สำหรับรหัส **{code_value}**\n\n"
+                    "โปรดตรวจสอบว่ามีไฟล์ PNG ที่สร้างจากสคริปต์ `generate_asset_qr.py` แล้ว หรือชื่อไฟล์ตรงกัน"
+                )
 
 
 # =========================
