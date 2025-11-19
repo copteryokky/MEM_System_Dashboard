@@ -1,3 +1,6 @@
 streamlit
 pandas
+altair
 openpyxl
+qrcode[pil]
+Pillow
