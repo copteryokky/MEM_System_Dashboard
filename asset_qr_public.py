@@ -22,7 +22,7 @@ st.set_page_config(
 
 # ⚠️ แก้ให้เป็น URL ของแอป "QR public" ตัวนี้หลังจากสร้างใน Streamlit Cloud แล้ว
 # ตอนทดสอบในเครื่องให้ใช้ "http://localhost:8502"
-QR_BASE_URL = "https://YOUR-QR-APP-NAME.streamlit.app"
+QR_BASE_URL = "https://memsystemdashboard-qr.streamlit.app/"
 
 
 # =========================

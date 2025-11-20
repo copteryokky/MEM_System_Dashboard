@@ -15,7 +15,8 @@ from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 EXCEL_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 
 # URL ของหน้า Streamlit ที่ใช้แสดง/แก้ไขรายละเอียดครุภัณฑ์ (asset_qr_detail.py ที่ deploy แล้ว)
-QR_BASE_URL = "https://mem-system-qr.streamlit.app"  # <-- แก้ให้ตรงของคุณ
+QR_BASE_URL = "https://memsystemdashboard-qr.streamlit.app/"
+  # <-- แก้ให้ตรงของคุณ
 QR_PAGE_PATH = ""  # ถ้าใช้ root ก็เว้นว่าง "", ถ้าเป็น /asset ก็ใส่ "/asset"
 
 OUTPUT_DIR = Path("qr_images")
