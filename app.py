@@ -2,8 +2,6 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 from pathlib import Path
-from io import BytesIO
-from urllib.parse import quote_plus
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -16,13 +14,6 @@ st.set_page_config(
     page_icon="🩺",
     layout="wide",
 )
-
-# ชื่อคอลัมน์รหัสที่ใช้สำหรับสร้าง / หาไฟล์ QR
-EXCEL_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
-
-# โฟลเดอร์เก็บรูปภาพ QR (ต้องมีในโปรเจกต์)
-QR_IMG_DIR = Path("qr_images")
-
 
 # =========================
 # STYLE: LOGIN PAGE
@@ -104,7 +95,6 @@ def set_login_style():
         """,
         unsafe_allow_html=True,
     )
-
 
 # =========================
 # STYLE: MAIN APP
@@ -248,7 +238,7 @@ def set_main_style():
             color: #1d4ed8;
         }
 
-        /* legend สถานะ – บรรทัดเดียว เลื่อนแนวนอนได้ */
+        /* legend */
         .mem-status-legend-wrapper{
             margin-top: 10px;
             overflow-x: auto;
@@ -277,7 +267,7 @@ def set_main_style():
             border-radius: 999px;
         }
 
-        /* CARD ล้อมกราฟ / ตาราง */
+        /* CARD ล้อมกราฟ */
         .mem-card{
             background: #FFFFFF;
             border-radius: 32px;
@@ -313,51 +303,10 @@ def set_main_style():
         .mem-status-table table{
             font-size: 13px;
         }
-
-        /* การ์ดสถานที่ใช้งาน */
-        .mem-loc-section-title{
-            font-size: 16px;
-            font-weight: 700;
-            margin-bottom: 0.3rem;
-            color: #111827;
-        }
-        .mem-loc-section-sub{
-            font-size: 12px;
-            color: #6b7280;
-            margin-bottom: 0.6rem;
-        }
-        .mem-loc-grid{
-            display: grid;
-            grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
-            gap: 10px;
-        }
-        .mem-loc-card{
-            background: #ffffff;
-            border-radius: 18px;
-            padding: 8px 12px;
-            box-shadow: 0 6px 16px rgba(15,23,42,0.06);
-            border: 1px solid #e5e7eb;
-        }
-        .mem-loc-rank{
-            font-size: 11px;
-            color: #9ca3af;
-            margin-bottom: 2px;
-        }
-        .mem-loc-name{
-            font-size: 13px;
-            font-weight: 600;
-            color: #111827;
-        }
-        .mem-loc-count{
-            font-size: 12px;
-            color: #4b5563;
-            margin-top: 2px;
-        }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
 
 # =========================
 # UTIL: Excel helpers
@@ -367,29 +316,24 @@ def get_available_excel_files():
     return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
 
 
-def init_excel_file_name():
-    if "excel_file_name" in st.session_state:
-        return
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    files = get_available_excel_files()
-
-    if files:
-        st.session_state["excel_file_name"] = (
-            DEFAULT_EXCEL_NAME if DEFAULT_EXCEL_NAME in files else files[0]
-        )
-    elif DEFAULT_EXCEL_PATH.exists():
-        st.session_state["excel_file_name"] = DEFAULT_EXCEL_NAME
-    else:
-        st.session_state["excel_file_name"] = None
-
-
 def get_current_excel_path() -> Path | None:
-    init_excel_file_name()
+    """ใช้ไฟล์ที่เลือกใน session ถ้ามี / ไม่มีก็ fallback เป็น DEFAULT / ไฟล์แรกใน data."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
     name = st.session_state.get("excel_file_name")
-    if not name:
-        return None
-    return DATA_DIR / name
+    if name:
+        path = DATA_DIR / name
+        if path.exists():
+            return path
+
+    if DEFAULT_EXCEL_PATH.exists():
+        return DEFAULT_EXCEL_PATH
+
+    files = get_available_excel_files()
+    if files:
+        return DATA_DIR / files[0]
+
+    return None
 
 
 def load_equipment_data() -> pd.DataFrame:
@@ -418,36 +362,6 @@ def save_equipment_data(df: pd.DataFrame):
         st.success(f"บันทึกการแก้ไขลงไฟล์: {path.name} เรียบร้อยแล้ว")
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
-
-
-# =========================
-# หาไฟล์รูป QR จากโฟลเดอร์ qr_images
-# =========================
-def find_qr_image_for_code(code: str) -> Path | None:
-    """
-    หารูป QR จากโฟลเดอร์ qr_images โดยใช้รหัสเครื่องมือห้องปฏิบัติการเป็น key
-    รูปแบบไฟล์ที่ลองหา:
-      - *_{code}.png   เช่น 001_LAB-AS-GN-A001.png
-      - {code}.png
-    """
-    code = (code or "").strip()
-    if not code:
-        return None
-    if not QR_IMG_DIR.exists():
-        return None
-
-    pattern1 = f"*_{code}.png"
-    matches = list(QR_IMG_DIR.glob(pattern1))
-    if matches:
-        return matches[0]
-
-    pattern2 = f"{code}.png"
-    matches2 = list(QR_IMG_DIR.glob(pattern2))
-    if matches2:
-        return matches2[0]
-
-    return None
-
 
 # =========================
 # หน้า Login
@@ -483,7 +397,6 @@ def login_page():
         else:
             st.error("username หรือ password ไม่ถูกต้อง")
 
-
 # =========================
 # Helper: ใส่สไตล์ใน Altair chart
 # =========================
@@ -496,7 +409,6 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
             fill="#FFFFFF",
         )
     )
-
 
 # =========================
 # หน้า "หน้าหลัก" + Dashboard
@@ -526,7 +438,6 @@ def page_home():
         st.warning("ไม่พบคอลัมน์ 'สถานะ' ในไฟล์ Excel")
         return
 
-    # --------- เตรียมข้อมูลสถานะ ---------
     status_counts = (
         df[status_col]
         .fillna("ไม่ทราบสถานะ")
@@ -534,14 +445,12 @@ def page_home():
         .rename_axis("สถานะ")
         .reset_index(name="count")
     )
-
-    total = status_counts["count"].sum()
+    total = int(status_counts["count"].sum())
     status_counts["percent"] = status_counts["count"] / max(total, 1)
-    status_counts["label_short"] = status_counts.apply(
-        lambda r: f"{r['percent']*100:.1f}%", axis=1
+    status_counts["label_short"] = status_counts["percent"].map(
+        lambda p: f"{p*100:.1f}%"
     )
 
-    # ลำดับและสี
     status_order = [
         "พร้อมใช้งาน",
         "ตรวจไม่พบ",
@@ -571,6 +480,7 @@ def page_home():
     top_loc_name = "ไม่พบข้อมูล"
     top_loc_count = 0
     loc_counts = pd.DataFrame(columns=["สถานที่ใช้งาน", "count"])
+
     if loc_col in df.columns:
         loc_series = df[loc_col].dropna()
         if not loc_series.empty:
@@ -583,14 +493,13 @@ def page_home():
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
-    # --------- SUMMARY ตัวเลข (Hero Card) ---------
     def get_count(label: str) -> int:
         try:
             return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
         except Exception:
             return 0
 
-    cnt_total = int(total)
+    cnt_total = total
     cnt_ready = get_count("พร้อมใช้งาน")
     cnt_repairable = get_count("ชำรุด(ซ่อมแซมได้)")
     cnt_unrepairable = get_count("ชำรุด(ซ่อมแซมไม่ได้)")
@@ -613,68 +522,68 @@ def page_home():
         )
     legend_html = "".join(legend_html_parts)
 
-    hero_html = f"""
-    <div class="mem-hero">
-        <div class="mem-hero-title">จำนวนครุภัณฑ์</div>
-        <div class="mem-hero-sub">
-            สรุปจำนวนครุภัณฑ์ทั้งหมด แยกตามสถานะ และจำนวนตามสถานที่ใช้งานจากข้อมูลล่าสุดในระบบ
-        </div>
-        <div class="mem-hero-metrics">
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">รวมครุภัณฑ์ทั้งหมด</div>
-                <div class="mem-hero-metric-value">{cnt_total}</div>
-                <span class="mem-hero-metric-pill">ทั้งหมด</span>
-            </div>
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">พร้อมใช้งาน</div>
-                <div class="mem-hero-metric-value">{cnt_ready}</div>
-                <span class="mem-hero-metric-pill" style="background:#dcfce7;color:#166534;">สถานะดี</span>
-            </div>
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมได้)</div>
-                <div class="mem-hero-metric-value">{cnt_repairable}</div>
-                <span class="mem-hero-metric-pill" style="background:#ffedd5;color:#9a3412;">ต้องซ่อมแซม</span>
-            </div>
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมไม่ได้)</div>
-                <div class="mem-hero-metric-value">{cnt_unrepairable}</div>
-                <span class="mem-hero-metric-pill" style="background:#fee2e2;color:#991b1b;">พิจารณาจัดหาใหม่</span>
-            </div>
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">ตรวจไม่พบ / สูญหาย</div>
-                <div class="mem-hero-metric-value">{cnt_missing}</div>
-                <span class="mem-hero-metric-pill" style="background:#e5e7eb;color:#111827;">ติดตามตรวจสอบ</span>
-            </div>
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">จำนวนสถานที่ใช้งานทั้งหมด</div>
-                <div class="mem-hero-metric-value">{loc_total}</div>
-                <span class="mem-hero-metric-pill">ตามไฟล์ Excel</span>
-            </div>
-            <div class="mem-hero-metric">
-                <div class="mem-hero-metric-label">สถานที่ที่มีครุภัณฑ์มากที่สุด</div>
-                <div class="mem-hero-metric-value" style="font-size:14px;">{top_loc_name}</div>
-                <span class="mem-hero-metric-pill" style="background:#cffafe;color:#0f766e;">{top_loc_count} รายการ</span>
-            </div>
-        </div>
-        <div class="mem-status-legend-wrapper">
-            <div class="mem-status-legend">
-                {legend_html}
-            </div>
-        </div>
-    </div>
-    """
+    hero_html = (
+        '<div class="mem-hero">'
+        '<div class="mem-hero-title">จำนวนครุภัณฑ์</div>'
+        '<div class="mem-hero-sub">'
+        'สรุปจำนวนครุภัณฑ์ทั้งหมด แยกตามสถานะ และจำนวนตามสถานที่ใช้งานจากข้อมูลล่าสุดในระบบ'
+        '</div>'
+        '<div class="mem-hero-metrics">'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">รวมครุภัณฑ์ทั้งหมด</div>'
+        f'<div class="mem-hero-metric-value">{cnt_total}</div>'
+        '<span class="mem-hero-metric-pill">ทั้งหมด</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">พร้อมใช้งาน</div>'
+        f'<div class="mem-hero-metric-value">{cnt_ready}</div>'
+        '<span class="mem-hero-metric-pill" '
+        'style="background:#dcfce7;color:#166534;">สถานะดี</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมได้)</div>'
+        f'<div class="mem-hero-metric-value">{cnt_repairable}</div>'
+        '<span class="mem-hero-metric-pill" '
+        'style="background:#ffedd5;color:#9a3412;">ต้องซ่อมแซม</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมไม่ได้)</div>'
+        f'<div class="mem-hero-metric-value">{cnt_unrepairable}</div>'
+        '<span class="mem-hero-metric-pill" '
+        'style="background:#fee2e2;color:#991b1b;">พิจารณาจัดหาใหม่</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">ตรวจไม่พบ / สูญหาย</div>'
+        f'<div class="mem-hero-metric-value">{cnt_missing}</div>'
+        '<span class="mem-hero-metric-pill" '
+        'style="background:#e5e7eb;color:#111827;">ติดตามตรวจสอบ</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">จำนวนสถานที่ใช้งานทั้งหมด</div>'
+        f'<div class="mem-hero-metric-value">{loc_total}</div>'
+        '<span class="mem-hero-metric-pill">ตามไฟล์ Excel</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">สถานที่ที่มีครุภัณฑ์มากที่สุด</div>'
+        f'<div class="mem-hero-metric-value" style="font-size:14px;">{top_loc_name}</div>'
+        f'<span class="mem-hero-metric-pill" '
+        'style="background:#cffafe;color:#0f766e;">'
+        f'{top_loc_count} รายการ</span>'
+        '</div>'
+        '</div>'
+        '<div class="mem-status-legend-wrapper"><div class="mem-status-legend">'
+        f'{legend_html}'
+        '</div></div>'
+        '</div>'
+    )
     st.markdown(hero_html, unsafe_allow_html=True)
 
-    # --------- PIE CHART (Donut) ---------
+    # --------- PIE CHART ---------
     base_pie = (
         alt.Chart(status_counts)
         .encode(
             theta=alt.Theta("count:Q", stack=True),
-            color=alt.Color(
-                "สถานะ:N",
-                scale=alt_color_scale,
-                legend=alt.Legend(title="สถานะ"),
-            ),
+            color=alt.Color("สถานะ:N", scale=alt_color_scale, legend=alt.Legend(title="สถานะ")),
             tooltip=[
                 alt.Tooltip("สถานะ:N", title="สถานะ"),
                 alt.Tooltip("count:Q", title="จำนวน"),
@@ -682,27 +591,22 @@ def page_home():
             ],
         )
     )
-
     pie = base_pie.mark_arc(
         outerRadius=150,
         innerRadius=70,
         stroke="white",
         strokeWidth=2,
     )
-
-    labels = (
-        base_pie.mark_text(radius=110, size=13, color="#111827", fontWeight="bold")
-        .encode(text="label_short:N")
-    )
+    labels = base_pie.mark_text(
+        radius=110, size=13, color="#111827", fontWeight="bold"
+    ).encode(text="label_short:N")
 
     pie_chart = styled_chart(pie + labels, width=420, height=320)
 
-    # --------- ตารางสถานะ ---------
     status_table_df = status_counts.sort_values("สถานะ").copy()
     status_table_df = status_table_df[["สถานะ", "count"]]
     status_table_df.rename(columns={"count": "จำนวน (รายการ)"}, inplace=True)
 
-    # --------- Layout: Pie + Table ---------
     st.markdown(
         """
         <div class="mem-card">
@@ -715,76 +619,47 @@ def page_home():
     )
 
     col_pie, col_table = st.columns([1, 1])
-
     with col_pie:
         st.altair_chart(pie_chart, use_container_width=True)
-
     with col_table:
         st.markdown('<div class="mem-status-table">', unsafe_allow_html=True)
-        st.dataframe(
-            status_table_df,
-            hide_index=True,
-            use_container_width=True,
-        )
+        st.dataframe(status_table_df, hide_index=True, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------- การ์ดสถานที่ใช้งาน (ล่างกราฟวงกลม) ---------
+    # HERO CARD แสดงสถานที่
     if not loc_counts.empty:
-        st.markdown(
-            """
-            <div class="mem-card">
-                <div class="mem-loc-section-title">สถานที่ใช้งาน (อันดับต้น ๆ)</div>
-                <div class="mem-loc-section-sub">
-                    แสดงสถานที่ที่มีจำนวนครุภัณฑ์มากที่สุดจากข้อมูลในไฟล์ Excel ปัจจุบัน
-                </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        top_n = loc_counts.head(5).reset_index(drop=True)
-
-        cards_html_parts = []
-        for idx, row in top_n.iterrows():
-            rank = idx + 1
-            name = str(row["สถานที่ใช้งาน"])
-            cnt = int(row["count"])
-            cards_html_parts.append(
-                f"""
-                <div class="mem-loc-card">
-                    <div class="mem-loc-rank">#{rank}</div>
-                    <div class="mem-loc-name">{name}</div>
-                    <div class="mem-loc-count">{cnt} รายการ</div>
-                </div>
-                """
+        metric_parts = []
+        for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
+            name = str(r["สถานที่ใช้งาน"])
+            cnt = int(r["count"])
+            metric_parts.append(
+                '<div class="mem-hero-metric">'
+                f'<div class="mem-hero-metric-label">{name}</div>'
+                f'<div class="mem-hero-metric-value">{cnt}</div>'
+                f'<span class="mem-hero-metric-pill">อันดับ {rank}</span>'
+                "</div>"
             )
 
-        cards_html = "".join(cards_html_parts)
-        st.markdown(
-            f"""
-            <div class="mem-loc-grid">
-                {cards_html}
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        loc_hero_html = (
+            '<div class="mem-hero">'
+            '<div class="mem-hero-title">สถานที่ที่มีครุภัณฑ์ในระบบ</div>'
+            '<div class="mem-hero-sub">'
+            'แสดงอันดับสถานที่ที่มีจำนวนครุภัณฑ์มากที่สุด จากข้อมูลในตารางรายการครุภัณฑ์ปัจจุบัน'
+            "</div>"
+            '<div class="mem-hero-metrics">'
+            + "".join(metric_parts)
+            + "</div></div>"
         )
-
+        st.markdown(loc_hero_html, unsafe_allow_html=True)
 
 # =========================
-# Helper: ตาราง + เลือกแถว
+# Helper: ตาราง + เลือกแถว (สำหรับลบ)
 # =========================
-def equipment_table_with_selection(df: pd.DataFrame) -> int:
-    current_idx = st.session_state.get("selected_row_idx", 0)
-    if current_idx < 0 or current_idx >= len(df):
-        current_idx = 0
-
+def equipment_table_with_selection(df: pd.DataFrame):
     df_with_sel = df.copy()
-    df_with_sel.insert(0, "เลือก", False)
-
-    if len(df_with_sel) > 0 and current_idx < len(df_with_sel):
-        df_with_sel.at[current_idx, "เลือก"] = True
+    if "เลือก" not in df_with_sel.columns:
+        df_with_sel.insert(0, "เลือก", False)
 
     edited_df = st.data_editor(
         df_with_sel,
@@ -794,21 +669,14 @@ def equipment_table_with_selection(df: pd.DataFrame) -> int:
         hide_index=True,
         column_config={
             "เลือก": st.column_config.CheckboxColumn(
-                "เลือก", help="ติ๊กเลือกครุภัณฑ์เพื่อดู/แก้ไขรายละเอียด"
+                "เลือก", help="ติ๊กเลือกครุภัณฑ์เพื่อใช้สำหรับลบหลายรายการ"
             )
         },
-        disabled=list(df.columns),
+        disabled=[c for c in df_with_sel.columns if c != "เลือก"],
     )
 
-    selected_rows = edited_df[edited_df["เลือก"]]
-    if not selected_rows.empty:
-        new_idx = int(selected_rows.index[-1])
-    else:
-        new_idx = current_idx
-
-    st.session_state.selected_row_idx = new_idx
-    return new_idx
-
+    selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
+    st.session_state["rows_for_delete"] = selected_rows
 
 # =========================
 # หน้า "รายการครุภัณฑ์"
@@ -823,7 +691,6 @@ def page_equipment_list():
     st.markdown("### เลือกไฟล์ Excel ที่ต้องการใช้งาน")
 
     files = get_available_excel_files()
-    init_excel_file_name()
     current_name = st.session_state.get("excel_file_name")
 
     if not files and not DEFAULT_EXCEL_PATH.exists():
@@ -852,8 +719,11 @@ def page_equipment_list():
                     st.success(f"กำลังใช้งานไฟล์: {selected_file}")
                     st.rerun()
             with col_path:
-                path = DATA_DIR / current_name
-                st.caption(f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`")
+                path = get_current_excel_path()
+                if path is not None:
+                    st.caption(
+                        f"ไฟล์ที่ใช้งานอยู่: **{path.name}**\n\nที่อยู่ไฟล์: `{path}`"
+                    )
 
     with st.expander("📁 อัปโหลดไฟล์ Excel ใหม่ (เพิ่ม/แทนที่ไฟล์เดิม)", expanded=False):
         uploaded = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"])
@@ -878,10 +748,41 @@ def page_equipment_list():
     st.markdown("### ตารางรายการครุภัณฑ์")
     equipment_table_with_selection(df)
 
+    # ---------- ปุ่มลบข้อมูล ----------
+    st.markdown("#### จัดการลบข้อมูล")
+    col_del1, col_del2 = st.columns([1, 1.2])
+
+    with col_del1:
+        if st.button("🗑️ ลบรายการที่เลือก", use_container_width=True):
+            rows = st.session_state.get("rows_for_delete", [])
+            if not rows:
+                st.warning("กรุณาติ๊กเลือกอย่างน้อย 1 รายการในคอลัมน์ 'เลือก' ก่อนลบ")
+            else:
+                df_new = df.drop(index=rows).reset_index(drop=True)
+                save_equipment_data(df_new)
+                st.session_state["selected_row_idx"] = 0
+                st.success(f"ลบ {len(rows)} รายการเรียบร้อยแล้ว")
+                st.rerun()
+
+    with col_del2:
+        confirm_all = st.checkbox(
+            "ยืนยันการลบข้อมูลทั้งหมดในตาราง", key="confirm_delete_all"
+        )
+        if st.button("🧹 ลบข้อมูลทั้งหมด", use_container_width=True):
+            if not confirm_all:
+                st.warning("กรุณาติ๊ก 'ยืนยันการลบข้อมูลทั้งหมดในตาราง' ก่อนลบทั้งหมด")
+            else:
+                df_new = df.iloc[0:0]
+                save_equipment_data(df_new)
+                st.session_state["selected_row_idx"] = 0
+                st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
+                st.rerun()
+
+    # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
         name = str(row.get("ชื่อครุภัณฑ์", "ไม่ทราบชื่อ"))
-        code = str(row.get(EXCEL_CODE_COL, ""))
+        code = str(row.get("รหัสเครื่องมือห้องปฏิบัติการ", ""))
         return f"{i+1:03d} - {name} ({code})"
 
     options_index = list(df.index)
@@ -890,7 +791,7 @@ def page_equipment_list():
         default_idx = 0
 
     selected_idx_box = st.selectbox(
-        "เลือกครุภัณฑ์ (สามารถติ๊กจากตารางด้านบน หรือเลือกจากรายการนี้)",
+        "เลือกครุภัณฑ์สำหรับดู/แก้ไขรายละเอียด",
         options=options_index,
         index=default_idx,
         format_func=format_option,
@@ -903,6 +804,7 @@ def page_equipment_list():
 
     selected_idx = st.session_state.get("selected_row_idx", 0)
 
+    # ---------- ฟอร์มรายละเอียด ----------
     st.markdown("### รายละเอียดครุภัณฑ์")
     st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
 
@@ -916,74 +818,50 @@ def page_equipment_list():
     left_cols = columns_list[:half]
     right_cols = columns_list[half:]
 
-    # ฟอร์มรายละเอียด + ช่องแสดง QR อยู่ขวาล่าง
-    form_col, qr_col = st.columns([2, 1])
-
+    col_left, col_right = st.columns(2)
     updated_values = {}
 
-    with form_col:
-        col_left, col_right = st.columns(2)
+    with col_left:
+        for col_name in left_cols:
+            current_val = row.get(col_name, "")
+            new_val = st.text_input(
+                str(col_name),
+                value="" if pd.isna(current_val) else str(current_val),
+                key=f"detail_left_{col_name}_{selected_idx}",
+            )
+            updated_values[col_name] = new_val
 
-        with col_left:
-            for col_name in left_cols:
-                current_val = row.get(col_name, "")
-                new_val = st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_left_{col_name}_{selected_idx}",
-                )
-                updated_values[col_name] = new_val
+    with col_right:
+        for col_name in right_cols:
+            current_val = row.get(col_name, "")
+            new_val = st.text_input(
+                str(col_name),
+                value="" if pd.isna(current_val) else str(current_val),
+                key=f"detail_right_{col_name}_{selected_idx}",
+            )
+            updated_values[col_name] = new_val
 
-        with col_right:
-            for col_name in right_cols:
-                current_val = row.get(col_name, "")
-                new_val = st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_right_{col_name}_{selected_idx}",
-                )
-                updated_values[col_name] = new_val
+    st.write("")
+    if st.button("บันทึกการแก้ไข", type="primary"):
+        df_current = load_equipment_data()
 
-        st.write("")
-        if st.button("บันทึกการแก้ไข", type="primary"):
-            df_current = load_equipment_data()
+        for col in columns_list:
+            raw_val = updated_values.get(col, "")
+            orig_dtype = df_current[col].dtype if col in df_current.columns else object
 
-            for col in columns_list:
-                raw_val = updated_values.get(col, "")
-                orig_dtype = df_current[col].dtype if col in df_current.columns else object
-
-                if pd.api.types.is_numeric_dtype(orig_dtype):
-                    if raw_val == "":
-                        df_current.at[selected_idx, col] = pd.NA
-                    else:
-                        try:
-                            df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
-                        except Exception:
-                            df_current.at[selected_idx, col] = raw_val
+            if pd.api.types.is_numeric_dtype(orig_dtype):
+                if raw_val == "":
+                    df_current.at[selected_idx, col] = pd.NA
                 else:
-                    df_current.at[selected_idx, col] = raw_val
-
-            save_equipment_data(df_current)
-            st.rerun()
-
-    # --------- ส่วนแสดง QR Code ---------
-    with qr_col:
-        st.markdown("#### QR Code ของครุภัณฑ์")
-        code_value = str(row.get(EXCEL_CODE_COL, "")).strip()
-
-        if not code_value:
-            st.info(f"ยังไม่มีข้อมูลในคอลัมน์ **{EXCEL_CODE_COL}** สำหรับรายการนี้")
-        else:
-            qr_path = find_qr_image_for_code(code_value)
-            if qr_path and qr_path.exists():
-                st.image(str(qr_path), caption=code_value, use_column_width=True)
-                st.caption(f"รหัสเครื่องมือห้องปฏิบัติการ: {code_value}")
+                    try:
+                        df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
+                    except Exception:
+                        df_current.at[selected_idx, col] = raw_val
             else:
-                st.warning(
-                    f"ไม่พบไฟล์ QR ในโฟลเดอร์ `qr_images` สำหรับรหัส **{code_value}**\n\n"
-                    "โปรดตรวจสอบว่ามีไฟล์ PNG ที่สร้างจากสคริปต์ `generate_asset_qr.py` แล้ว หรือชื่อไฟล์ตรงกัน"
-                )
+                df_current.at[selected_idx, col] = raw_val
 
+        save_equipment_data(df_current)
+        st.rerun()
 
 # =========================
 # หน้า "แจ้งซ่อม / บำรุงรักษา"
@@ -996,7 +874,6 @@ def page_maintenance():
     )
     st.info("ส่วนนี้ยังเป็นโครงเปล่าไว้ก่อน สามารถออกแบบฟอร์มแจ้งซ่อม/ประวัติซ่อมได้ภายหลัง")
 
-
 # =========================
 # หน้า "รายงานสรุป"
 # =========================
@@ -1007,7 +884,6 @@ def page_summary():
         unsafe_allow_html=True,
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลในอนาคต")
-
 
 # =========================
 # MAIN APP หลัง Login
@@ -1069,18 +945,146 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
+# =========================
+# Helper: query param
+# =========================
+def get_query_param(name: str, default=None):
+    try:
+        qp = st.query_params
+    except Exception:
+        return default
+    if name not in qp:
+        return default
+    val = qp[name]
+    if isinstance(val, list):
+        return val[0] if val else default
+    return val
+
+# =========================
+# QR DETAIL PAGE (ไม่ต้องล็อกอิน)
+# =========================
+def qr_detail_page():
+    set_main_style()
+
+    # ซ่อน sidebar สำหรับโหมด QR
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"]{display:none;}
+        [data-testid="stSidebarNav"]{display:none;}
+        .block-container{max-width: 900px !important;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    code = get_query_param("code", "").strip()
+    st.markdown(
+        '<div class="mem-page-title">ข้อมูลเครื่องมือห้องปฏิบัติการ</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "หน้านี้ใช้สำหรับแก้ไขรายละเอียดครุภัณฑ์จากการสแกน QR Code "
+        "ทุกคนที่เข้าถึงสามารถแก้ไขข้อมูลได้โดยไม่ต้องล็อกอิน",
+    )
+
+    if not code:
+        st.error("ไม่พบรหัสเครื่องมือ (code=...) ใน URL")
+        st.info("ตัวอย่างลิงก์ที่ถูกต้อง: ?mode=qr&code=LAB-AS-GN-A001")
+        return
+
+    df = load_equipment_data()
+    if df.empty:
+        st.error("ไม่พบไฟล์ Excel สำหรับข้อมูลครุภัณฑ์ (ในโฟลเดอร์ data)")
+        return
+
+    code_col = "รหัสเครื่องมือห้องปฏิบัติการ"
+    if code_col not in df.columns:
+        st.error(f"ไม่พบคอลัมน์ '{code_col}' ในไฟล์ Excel")
+        return
+
+    mask = df[code_col].astype(str) == str(code)
+    if not mask.any():
+        st.error(f"ไม่พบรายการครุภัณฑ์ที่มีรหัสเครื่องมือห้องปฏิบัติการ: {code}")
+        return
+
+    idx = mask[mask].index[0]
+    row = df.loc[idx].to_dict()
+
+    st.markdown(f"### รหัสเครื่องมือห้องปฏิบัติการ: **{code}**")
+    st.caption("แก้ไขข้อมูลในฟอร์มด้านล่างแล้วกดปุ่ม **บันทึกการแก้ไข** ข้อมูลจะถูกบันทึกลงไฟล์ Excel เดียวกับหน้าเว็บหลักทันที")
+
+    columns_list = list(df.columns)
+    half = (len(columns_list) + 1) // 2
+    left_cols = columns_list[:half]
+    right_cols = columns_list[half:]
+
+    col_left, col_right = st.columns(2)
+    updated_values = {}
+
+    with col_left:
+        for col_name in left_cols:
+            current_val = row.get(col_name, "")
+            new_val = st.text_input(
+                str(col_name),
+                value="" if pd.isna(current_val) else str(current_val),
+                key=f"qr_left_{col_name}_{idx}",
+            )
+            updated_values[col_name] = new_val
+
+    with col_right:
+        for col_name in right_cols:
+            current_val = row.get(col_name, "")
+            new_val = st.text_input(
+                str(col_name),
+                value="" if pd.isna(current_val) else str(current_val),
+                key=f"qr_right_{col_name}_{idx}",
+            )
+            updated_values[col_name] = new_val
+
+    st.write("")
+    if st.button("บันทึกการแก้ไข", type="primary"):
+        df_current = load_equipment_data()
+        if df_current.empty:
+            st.error("ไม่สามารถโหลดข้อมูล Excel ซ้ำอีกครั้งได้")
+            return
+
+        for col in columns_list:
+            raw_val = updated_values.get(col, "")
+            orig_dtype = df_current[col].dtype if col in df_current.columns else object
+
+            if pd.api.types.is_numeric_dtype(orig_dtype):
+                if raw_val == "":
+                    df_current.at[idx, col] = pd.NA
+                else:
+                    try:
+                        df_current.at[idx, col] = pd.to_numeric(raw_val)
+                    except Exception:
+                        df_current.at[idx, col] = raw_val
+            else:
+                df_current.at[idx, col] = raw_val
+
+        save_equipment_data(df_current)
+        st.success("บันทึกข้อมูลเรียบร้อยแล้ว")
 
 # =========================
 # ENTRY POINT
 # =========================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "current_menu" not in st.session_state:
-    st.session_state.current_menu = "หน้าหลัก"
-if "selected_row_idx" not in st.session_state:
-    st.session_state.selected_row_idx = 0
+mode = get_query_param("mode", "").lower()
 
-if not st.session_state.logged_in:
-    login_page()
+if mode == "qr":
+    # โหมดสแกน QR: ไม่ต้องล็อกอิน
+    qr_detail_page()
 else:
-    main_app()
+    # โหมดปกติ: มี Login + เมนู
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+    if "current_menu" not in st.session_state:
+        st.session_state.current_menu = "หน้าหลัก"
+    if "selected_row_idx" not in st.session_state:
+        st.session_state.selected_row_idx = 0
+
+    if not st.session_state.logged_in:
+        login_page()
+    else:
+        main_app()
