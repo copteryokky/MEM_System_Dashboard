@@ -17,6 +17,7 @@ EXCEL_CODE_COL = "รหัสเครื่องมือห้องปฏ�
 # ตัวอย่าง: "https://mem-system-dashboard.streamlit.app"
 QR_BASE_URL = "https://mem-system-dashboard.streamlit.app"
 
+
 # โหมดสำหรับหน้า QR ใน app.py
 QR_MODE_PARAM = "mode=qr"
 
