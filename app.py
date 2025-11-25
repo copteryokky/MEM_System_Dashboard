@@ -2,8 +2,6 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 from pathlib import Path
-from io import BytesIO
-import qrcode
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -16,22 +14,6 @@ st.set_page_config(
     page_icon="🩺",
     layout="wide",
 )
-
-# คอลัมน์รหัสครุภัณฑ์ที่ใช้ร่วมกับหน้า QR
-ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
-
-# โฟลเดอร์รูปและ QR
-IMAGE_DIR = Path("asset_images")
-QR_IMAGES_DIR = Path("qr_images")
-IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-QR_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-
-MAINT_STATUS_CHOICES = [
-    "ยังไม่เคยแจ้งซ่อม",
-    "แจ้งซ่อมแล้ว - กำลังดำเนินการ",
-    "ซ่อมเสร็จแล้ว",
-    "ปลดระวาง / รอจำหน่าย",
-]
 
 # =========================
 # STYLE: LOGIN PAGE
@@ -256,6 +238,7 @@ def set_main_style():
             color: #1d4ed8;
         }
 
+        /* legend สถานะ – บรรทัดเดียว เลื่อนแนวนอนได้ */
         .mem-status-legend-wrapper{
             margin-top: 10px;
             overflow-x: auto;
@@ -284,6 +267,7 @@ def set_main_style():
             border-radius: 999px;
         }
 
+        /* CARD ล้อมกราฟ */
         .mem-card{
             background: #FFFFFF;
             border-radius: 32px;
@@ -365,13 +349,6 @@ def load_equipment_data() -> pd.DataFrame:
     try:
         df = pd.read_excel(path)
         df = df.dropna(how="all").reset_index(drop=True)
-
-        # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกับหน้า QR
-        if "สถานะแจ้งซ่อม" not in df.columns:
-            df["สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
-        if "รูปภาพครุภัณฑ์" not in df.columns:
-            df["รูปภาพครุภัณฑ์"] = ""
-
         return df
     except Exception as e:
         st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
@@ -390,55 +367,6 @@ def save_equipment_data(df: pd.DataFrame):
         st.success(f"บันทึกการแก้ไขลงไฟล์: {path.name} เรียบร้อยแล้ว")
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
-
-
-# =========================
-# Helper: รูป / QR
-# =========================
-def get_image_path_from_row(row: pd.Series) -> Path | None:
-    val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
-    if not val:
-        return None
-
-    p = Path(val)
-    if not p.is_absolute():
-        p = IMAGE_DIR / p.name
-    return p
-
-
-def save_uploaded_image(uploaded, asset_code: str) -> str:
-    suffix = Path(uploaded.name).suffix or ".png"
-    safe_code = asset_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
-    filename = f"{safe_code}{suffix}"
-    target_path = IMAGE_DIR / filename
-    with open(target_path, "wb") as f:
-        f.write(uploaded.getbuffer())
-    return filename
-
-
-def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
-    for col in ["_qr_image_path", "QR Code"]:
-        if col in row.index:
-            val = str(row.get(col, "") or "").strip()
-            if not val:
-                continue
-            p = Path(val)
-            if not p.is_absolute():
-                p2 = QR_IMAGES_DIR / p.name
-                if p2.exists():
-                    return p2
-            if p.exists():
-                return p
-    return None
-
-
-def generate_qr_bytes_for_url(url: str) -> bytes:
-    img = qrcode.make(url)
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf.getvalue()
-
 
 # =========================
 # หน้า Login
@@ -474,7 +402,6 @@ def login_page():
         else:
             st.error("username หรือ password ไม่ถูกต้อง")
 
-
 # =========================
 # Helper: ใส่สไตล์ใน Altair chart
 # =========================
@@ -488,7 +415,6 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
         )
     )
 
-
 # =========================
 # หน้า "หน้าหลัก" + Dashboard
 # =========================
@@ -498,7 +424,7 @@ def page_home():
     st.markdown(
         """
         <div style="margin-bottom: 0.2rem;">
-            <div class="mem-page-title">หน้าหลัก</div>
+            <div class="mem-page-title">หน้าหลัง</div>
             <div class="mem-page-subtitle">
                 ภาพรวมการจัดการครุภัณฑ์ และเครื่องมือห้องปฏิบัติการ (ดึงข้อมูลจากไฟล์ Excel ที่เลือกอยู่)
             </div>
@@ -574,7 +500,7 @@ def page_home():
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
-    # --------- SUMMARY ตัวเลข (Hero Card) ---------
+    # --------- SUMMARY ตัวเลข (Hero Card: จำนวนครุภัณฑ์) ---------
     def get_count(label: str) -> int:
         try:
             return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
@@ -723,7 +649,7 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------- HERO CARD ที่ 2: แสดง Top สถานที่ ---------
+    # --------- HERO CARD ที่ 2: สถานที่ที่มีครุภัณฑ์ ---------
     if not loc_counts.empty:
         metric_parts = []
         for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
@@ -749,7 +675,6 @@ def page_home():
         )
         st.markdown(loc_hero_html, unsafe_allow_html=True)
 
-
 # =========================
 # Helper: ตาราง + เลือกแถว (สำหรับลบ)
 # =========================
@@ -774,7 +699,6 @@ def equipment_table_with_selection(df: pd.DataFrame):
 
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
-
 
 # =========================
 # หน้า "รายการครุภัณฑ์"
@@ -877,8 +801,8 @@ def page_equipment_list():
     # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
-        name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
-        code = str(row.get(ASSET_CODE_COL, ""))
+        name = str(row.get("ชื่อครุภัณฑ์", "ไม่ทราบชื่อ"))
+        code = str(row.get("รหัสเครื่องมือห้องปฏิบัติการ", ""))
         return f"{i+1:03d} - {name} ({code})"
 
     options_index = list(df.index)
@@ -891,7 +815,7 @@ def page_equipment_list():
         options=options_index,
         index=default_idx,
         format_func=format_option,
-        key="equip_select_box_admin",
+        key="equip_select_box",
     )
 
     if selected_idx_box != st.session_state.get("selected_row_idx", 0):
@@ -900,6 +824,7 @@ def page_equipment_list():
 
     selected_idx = st.session_state.get("selected_row_idx", 0)
 
+    # ---------- ฟอร์มรายละเอียด ----------
     st.markdown("### รายละเอียดครุภัณฑ์")
     st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
 
@@ -907,22 +832,14 @@ def page_equipment_list():
         st.info("ยังไม่มีข้อมูลให้แสดง")
         return
 
-    row = df.iloc[selected_idx].copy()
-    asset_code = str(row.get(ASSET_CODE_COL, ""))
-
-    # ---- ฟิลด์หลัก (ยกเว้น สถานะแจ้งซ่อม + รูปภาพครุภัณฑ์ ที่จัดส่วนต่างหาก) ----
-    columns_list = [
-        c
-        for c in df.columns
-        if c not in ("รูปภาพครุภัณฑ์", "สถานะแจ้งซ่อม")
-    ]
-
+    row = df.iloc[selected_idx].to_dict()
+    columns_list = list(df.columns)
     half = (len(columns_list) + 1) // 2
     left_cols = columns_list[:half]
     right_cols = columns_list[half:]
 
     col_left, col_right = st.columns(2)
-    updated_values: dict[str, str] = {}
+    updated_values = {}
 
     with col_left:
         for col_name in left_cols:
@@ -944,79 +861,13 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
-    # ---- ส่วนสถานะแจ้งซ่อม ----
-    st.markdown("### สถานะแจ้งซ่อม")
-    current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
-    if current_maint not in MAINT_STATUS_CHOICES:
-        current_maint = MAINT_STATUS_CHOICES[0]
-
-    maint_select = st.selectbox(
-        "สถานะแจ้งซ่อม",
-        MAINT_STATUS_CHOICES,
-        index=MAINT_STATUS_CHOICES.index(current_maint),
-        key=f"maint_status_admin_{selected_idx}",
-    )
-    updated_values["สถานะแจ้งซ่อม"] = maint_select
-
-    # ---- ส่วน QR + รูปภาพ ----
-    st.markdown("### QR Code และรูปภาพครุภัณฑ์")
-    qr_col, img_col = st.columns([1, 1])
-
-    with qr_col:
-        st.subheader("QR Code ของครุภัณฑ์")
-        qr_path = get_qr_image_path_from_row(row)
-        qr_bytes_for_download = None
-
-        if qr_path and qr_path.exists():
-            st.image(str(qr_path), use_column_width=True)
-            with open(qr_path, "rb") as f:
-                qr_bytes_for_download = f.read()
-        else:
-            url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
-            qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
-            st.image(qr_bytes_for_download, use_column_width=True)
-
-        st.caption(asset_code)
-        st.write(
-            "สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน"
-        )
-
-        if qr_bytes_for_download:
-            st.download_button(
-                "⬇️ ดาวน์โหลด QR (PNG)",
-                data=qr_bytes_for_download,
-                file_name=f"{asset_code}_qr.png",
-                mime="image/png",
-                use_container_width=True,
-            )
-
-    with img_col:
-        st.subheader("รูปภาพครุภัณฑ์")
-        current_img_path = get_image_path_from_row(row)
-        if current_img_path and current_img_path.exists():
-            st.image(str(current_img_path), caption="รูปภาพปัจจุบัน", use_column_width=True)
-        else:
-            st.info("ยังไม่มีรูปภาพสำหรับรายการนี้")
-
-        uploaded_img = st.file_uploader(
-            "อัปโหลดรูปภาพใหม่ (ถ้าไม่เลือก ระบบจะใช้ของเดิม)",
-            type=["png", "jpg", "jpeg"],
-            key=f"upload_image_admin_{selected_idx}",
-        )
-
     st.write("")
     if st.button("บันทึกการแก้ไข", type="primary"):
         df_current = load_equipment_data()
-        if selected_idx >= len(df_current):
-            st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
-            return
 
-        # อัปเดตค่าฟิลด์ทั้งหมดตาม updated_values
-        for col in updated_values:
-            if col not in df_current.columns:
-                continue
+        for col in columns_list:
             raw_val = updated_values.get(col, "")
-            orig_dtype = df_current[col].dtype
+            orig_dtype = df_current[col].dtype if col in df_current.columns else object
 
             if pd.api.types.is_numeric_dtype(orig_dtype):
                 if raw_val == "":
@@ -1029,24 +880,24 @@ def page_equipment_list():
             else:
                 df_current.at[selected_idx, col] = raw_val
 
-        # ถ้าอัปโหลดรูปใหม่ -> เซฟและเก็บชื่อไฟล์ในคอลัมน์ "รูปภาพครุภัณฑ์"
-        if uploaded_img is not None:
-            filename = save_uploaded_image(uploaded_img, asset_code)
-            if "รูปภาพครุภัณฑ์" not in df_current.columns:
-                df_current["รูปภาพครุภัณฑ์"] = ""
-            df_current.at[selected_idx, "รูปภาพครุภัณฑ์"] = filename
-
         save_equipment_data(df_current)
         st.rerun()
-
 
 # =========================
 # หน้า "แจ้งซ่อม / บำรุงรักษา"
 # =========================
 def page_maintenance():
     set_main_style()
+
     st.markdown(
-        '<div class="mem-page-title">แจ้งซ่อม / บำรุงรักษา</div>',
+        """
+        <div style="margin-bottom: 0.2rem;">
+            <div class="mem-page-title">แจ้งซ่อม / บำรุงรักษา</div>
+            <div class="mem-page-subtitle">
+                ภาพรวมสถานะแจ้งซ่อมของครุภัณฑ์ทั้งหมดในระบบ ช่วยติดตามงานซ่อมและวางแผนบำรุงรักษา
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1055,49 +906,146 @@ def page_maintenance():
         st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
         return
 
-    if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
+    maint_col = "สถานะแจ้งซ่อม"
+    if maint_col not in df.columns:
+        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel กรุณาเพิ่มคอลัมน์นี้ในไฟล์ก่อน")
         return
 
-    maint_counts = (
-        df["สถานะแจ้งซ่อม"]
-        .fillna(MAINT_STATUS_CHOICES[0])
+    # เตรียมข้อมูลสถานะแจ้งซ่อม
+    status_counts = (
+        df[maint_col]
+        .fillna("ยังไม่เคยแจ้งซ่อม")
         .value_counts()
         .rename_axis("สถานะแจ้งซ่อม")
         .reset_index(name="count")
     )
 
+    if status_counts.empty:
+        st.info("ยังไม่มีข้อมูลสถานะแจ้งซ่อมในไฟล์ Excel")
+        return
+
+    total = int(status_counts["count"].sum())
+    status_counts["percent"] = status_counts["count"] / max(total, 1)
+    status_counts["label_short"] = status_counts["percent"].apply(
+        lambda v: f"{v*100:.1f}%" if total > 0 else "0.0%"
+    )
+
+    # ค่าตัวเลขสำคัญสำหรับ Hero Card
+    never_report = int(
+        status_counts.loc[
+            status_counts["สถานะแจ้งซ่อม"] == "ยังไม่เคยแจ้งซ่อม", "count"
+        ].sum()
+    )
+    have_report = total - never_report
+    n_status = int(status_counts["สถานะแจ้งซ่อม"].nunique())
+
+    top_status_row = status_counts.iloc[0]
+    top_status_name = str(top_status_row["สถานะแจ้งซ่อม"])
+    top_status_count = int(top_status_row["count"])
+
+    # ===== HERO CARD: ภาพรวมสถานะแจ้งซ่อม =====
+    hero_html = (
+        '<div class="mem-hero">'
+        '<div class="mem-hero-title">ภาพรวมสถานะแจ้งซ่อม</div>'
+        '<div class="mem-hero-sub">'
+        'สรุปจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมและวางแผนบำรุงรักษาในภาพรวม'
+        '</div>'
+        '<div class="mem-hero-metrics">'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">จำนวนครุภัณฑ์ทั้งหมด</div>'
+        f'<div class="mem-hero-metric-value">{total}</div>'
+        '<span class="mem-hero-metric-pill">จากไฟล์ Excel ปัจจุบัน</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">ยังไม่เคยแจ้งซ่อม</div>'
+        f'<div class="mem-hero-metric-value">{never_report}</div>'
+        '<span class="mem-hero-metric-pill" '
+        'style="background:#dcfce7;color:#166534;">อุปกรณ์ใช้งานปกติ</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">มีประวัติการแจ้งซ่อม</div>'
+        f'<div class="mem-hero-metric-value">{have_report}</div>'
+        '<span class="mem-hero-metric-pill" '
+        'style="background:#fee2e2;color:#991b1b;">ควรติดตามใกล้ชิด</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">จำนวนสถานะแจ้งซ่อมที่ใช้งาน</div>'
+        f'<div class="mem-hero-metric-value">{n_status}</div>'
+        '<span class="mem-hero-metric-pill">รูปแบบสถานะ</span>'
+        '</div>'
+        f'<div class="mem-hero-metric">'
+        '<div class="mem-hero-metric-label">สถานะแจ้งซ่อมที่พบมากที่สุด</div>'
+        f'<div class="mem-hero-metric-value" style="font-size:14px;">{top_status_name}</div>'
+        f'<span class="mem-hero-metric-pill" '
+        'style="background:#cffafe;color:#0f766e;">'
+        f'{top_status_count} รายการ</span>'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+    st.markdown(hero_html, unsafe_allow_html=True)
+
+    # ===== Donut Chart + ตารางสถานะแจ้งซ่อม =====
     st.markdown(
         """
         <div class="mem-card">
-            <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
+            <div class="mem-card-title">สัดส่วนตามสถานะแจ้งซ่อม</div>
             <div class="mem-card-subtitle">
-                แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
+                แสดงสัดส่วนและจำนวนครุภัณฑ์แยกตามสถานะแจ้งซ่อม 
+                พร้อมเปอร์เซ็นต์เมื่อวางเมาส์บนกราฟ
             </div>
         """,
         unsafe_allow_html=True,
     )
 
-    chart = (
-        alt.Chart(maint_counts)
-        .mark_bar()
+    base_pie = (
+        alt.Chart(status_counts)
         .encode(
-            x=alt.X("สถานะแจ้งซ่อม:N", sort=None, title="สถานะแจ้งซ่อม"),
-            y=alt.Y("count:Q", title="จำนวน (รายการ)"),
-            tooltip=["สถานะแจ้งซ่อม:N", "count:Q"],
+            theta=alt.Theta("count:Q", stack=True),
+            color=alt.Color(
+                "สถานะแจ้งซ่อม:N",
+                legend=alt.Legend(title="สถานะแจ้งซ่อม"),
+            ),
+            tooltip=[
+                alt.Tooltip("สถานะแจ้งซ่อม:N", title="สถานะแจ้งซ่อม"),
+                alt.Tooltip("count:Q", title="จำนวน"),
+                alt.Tooltip("percent:Q", title="สัดส่วน", format=".1%"),
+            ],
         )
     )
-    chart = styled_chart(chart, width=500, height=320)
-    st.altair_chart(chart, use_container_width=True)
 
-    st.dataframe(
-        maint_counts.rename(columns={"count": "จำนวน (รายการ)"}),
-        hide_index=True,
-        use_container_width=True,
+    pie = base_pie.mark_arc(
+        outerRadius=150,
+        innerRadius=70,
+        stroke="white",
+        strokeWidth=2,
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    labels = (
+        base_pie.mark_text(radius=110, size=13, color="#111827", fontWeight="bold")
+        .encode(text="label_short:N")
+    )
 
+    pie_chart = styled_chart(pie + labels, width=420, height=320)
+
+    maint_table_df = status_counts.copy()[["สถานะแจ้งซ่อม", "count"]]
+    maint_table_df.rename(columns={"count": "จำนวน (รายการ)"}, inplace=True)
+
+    col_pie, col_table = st.columns([1, 1])
+
+    with col_pie:
+        st.altair_chart(pie_chart, use_container_width=True)
+
+    with col_table:
+        st.markdown('<div class="mem-status-table">', unsafe_allow_html=True)
+        st.dataframe(
+            maint_table_df,
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================
 # หน้า "รายงานสรุป"
@@ -1108,8 +1056,7 @@ def page_summary():
         '<div class="mem-page-title">รายงานสรุป</div>',
         unsafe_allow_html=True,
     )
-    st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
-
+    st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลในอนาคต")
 
 # =========================
 # MAIN APP หลัง Login
@@ -1170,7 +1117,6 @@ def main_app():
         page_maintenance()
     elif menu == "รายงานสรุป":
         page_summary()
-
 
 # =========================
 # ENTRY POINT
