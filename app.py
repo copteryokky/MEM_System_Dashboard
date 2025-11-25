@@ -2,6 +2,8 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 from pathlib import Path
+from io import BytesIO
+import qrcode
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -15,13 +17,21 @@ st.set_page_config(
     layout="wide",
 )
 
-# โฟลเดอร์เก็บไฟล์ต่าง ๆ
-QR_IMAGE_DIR = Path("qr_images")          # ที่เก็บรูป QR
-ASSET_IMAGE_DIR = Path("asset_images")    # ที่เก็บรูปภาพครุภัณฑ์
+# คอลัมน์รหัสครุภัณฑ์ที่ใช้ร่วมกับหน้า QR
+ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 
-# ชื่อคอลัมน์พิเศษใน Excel
-MAINT_STATUS_COL = "สถานะแจ้งซ่อม"
-IMAGE_COL = "รูปภาพครุภัณฑ์"
+# โฟลเดอร์รูปและ QR
+IMAGE_DIR = Path("asset_images")
+QR_IMAGES_DIR = Path("qr_images")
+IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+QR_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+MAINT_STATUS_CHOICES = [
+    "ยังไม่เคยแจ้งซ่อม",
+    "แจ้งซ่อมแล้ว - กำลังดำเนินการ",
+    "ซ่อมเสร็จแล้ว",
+    "ปลดระวาง / รอจำหน่าย",
+]
 
 # =========================
 # STYLE: LOGIN PAGE
@@ -348,10 +358,6 @@ def get_current_excel_path() -> Path | None:
 
 
 def load_equipment_data() -> pd.DataFrame:
-    """
-    โหลดข้อมูลจากไฟล์ Excel ปัจจุบัน
-    และถ้าไม่มีคอลัมน์ สถานะแจ้งซ่อม / รูปภาพครุภัณฑ์ จะสร้างคอลัมน์ว่างให้
-    """
     path = get_current_excel_path()
     if path is None or not path.exists():
         return pd.DataFrame()
@@ -360,13 +366,11 @@ def load_equipment_data() -> pd.DataFrame:
         df = pd.read_excel(path)
         df = df.dropna(how="all").reset_index(drop=True)
 
-        # เพิ่มคอลัมน์สถานะแจ้งซ่อม ถ้ายังไม่มี
-        if MAINT_STATUS_COL not in df.columns:
-            df[MAINT_STATUS_COL] = ""
-
-        # เพิ่มคอลัมน์รูปภาพ ถ้ายังไม่มี
-        if IMAGE_COL not in df.columns:
-            df[IMAGE_COL] = ""
+        # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกับหน้า QR
+        if "สถานะแจ้งซ่อม" not in df.columns:
+            df["สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
+        if "รูปภาพครุภัณฑ์" not in df.columns:
+            df["รูปภาพครุภัณฑ์"] = ""
 
         return df
     except Exception as e:
@@ -389,42 +393,51 @@ def save_equipment_data(df: pd.DataFrame):
 
 
 # =========================
-# Helper: หาไฟล์ QR ที่ตรงกับรายการ
+# Helper: รูป / QR
 # =========================
-def find_qr_image_path(asset_code: str, row_dict: dict) -> Path | None:
-    """
-    พยายามหาไฟล์รูป QR ตามข้อมูลในแถว:
-    1) ถ้ามีคอลัมน์ path (_qr_image_path) ใช้อันนั้นก่อน
-    2) ถ้าไม่พบ ให้ค้นหาในโฟลเดอร์ qr_images ว่ามีไฟล์ที่มี asset_code อยู่ในชื่อหรือไม่
-    """
-    if not asset_code:
+def get_image_path_from_row(row: pd.Series) -> Path | None:
+    val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
+    if not val:
         return None
 
-    # 1) ใช้ path จากคอลัมน์ใน Excel ถ้ามี
-    for key in ["_qr_image_path", "QR Code", "qr_path"]:
-        p_txt = str(row_dict.get(key, "")).strip()
-        if not p_txt:
-            continue
+    p = Path(val)
+    if not p.is_absolute():
+        p = IMAGE_DIR / p.name
+    return p
 
-        cand = Path(p_txt)
-        if not cand.is_absolute():
-            # ลอง path ตามที่เก็บจริง
-            if cand.exists():
-                return cand
-            alt = QR_IMAGE_DIR / cand.name
-            if alt.exists():
-                return alt
-        else:
-            if cand.exists():
-                return cand
 
-    # 2) fallback: ค้นหาจากชื่อไฟล์
-    QR_IMAGE_DIR.mkdir(exist_ok=True)
-    matches = list(QR_IMAGE_DIR.glob(f"*{asset_code}*.png"))
-    if matches:
-        return matches[0]
+def save_uploaded_image(uploaded, asset_code: str) -> str:
+    suffix = Path(uploaded.name).suffix or ".png"
+    safe_code = asset_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
+    filename = f"{safe_code}{suffix}"
+    target_path = IMAGE_DIR / filename
+    with open(target_path, "wb") as f:
+        f.write(uploaded.getbuffer())
+    return filename
 
+
+def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
+    for col in ["_qr_image_path", "QR Code"]:
+        if col in row.index:
+            val = str(row.get(col, "") or "").strip()
+            if not val:
+                continue
+            p = Path(val)
+            if not p.is_absolute():
+                p2 = QR_IMAGES_DIR / p.name
+                if p2.exists():
+                    return p2
+            if p.exists():
+                return p
     return None
+
+
+def generate_qr_bytes_for_url(url: str) -> bytes:
+    img = qrcode.make(url)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf.getvalue()
 
 
 # =========================
@@ -561,7 +574,7 @@ def page_home():
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
-    # --------- SUMMARY ตัวเลข (Hero Card: จำนวนครุภัณฑ์) ---------
+    # --------- SUMMARY ตัวเลข (Hero Card) ---------
     def get_count(label: str) -> int:
         try:
             return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
@@ -710,7 +723,7 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------- HERO CARD ที่ 2: สถานที่ที่มีครุภัณฑ์ ---------
+    # --------- HERO CARD ที่ 2: แสดง Top สถานที่ ---------
     if not loc_counts.empty:
         metric_parts = []
         for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
@@ -828,7 +841,6 @@ def page_equipment_list():
         st.info("ยังไม่มีข้อมูลในไฟล์ Excel ที่เลือกอยู่")
         return
 
-    # ---------- ตารางรายการ ----------
     st.markdown("### ตารางรายการครุภัณฑ์")
     equipment_table_with_selection(df)
 
@@ -865,8 +877,8 @@ def page_equipment_list():
     # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
-        name = str(row.get("ชื่อครุภัณฑ์", row.get("ชื่อ", "ไม่ทราบชื่อ")))
-        code = str(row.get("รหัสเครื่องมือห้องปฏิบัติการ", ""))
+        name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
+        code = str(row.get(ASSET_CODE_COL, ""))
         return f"{i+1:03d} - {name} ({code})"
 
     options_index = list(df.index)
@@ -879,7 +891,7 @@ def page_equipment_list():
         options=options_index,
         index=default_idx,
         format_func=format_option,
-        key="equip_select_box",
+        key="equip_select_box_admin",
     )
 
     if selected_idx_box != st.session_state.get("selected_row_idx", 0):
@@ -888,7 +900,6 @@ def page_equipment_list():
 
     selected_idx = st.session_state.get("selected_row_idx", 0)
 
-    # ---------- ฟอร์มรายละเอียด ----------
     st.markdown("### รายละเอียดครุภัณฑ์")
     st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
 
@@ -896,15 +907,19 @@ def page_equipment_list():
         st.info("ยังไม่มีข้อมูลให้แสดง")
         return
 
-    row_series = df.iloc[selected_idx]
-    row = row_series.to_dict()
+    row = df.iloc[selected_idx].copy()
+    asset_code = str(row.get(ASSET_CODE_COL, ""))
 
-    # คอลัมน์ที่ให้แก้ไขด้วย text_input (ยกเว้น คอลัมน์สถานะแจ้งซ่อม และรูปภาพ)
-    form_columns = [c for c in df.columns if c not in [MAINT_STATUS_COL, IMAGE_COL]]
+    # ---- ฟิลด์หลัก (ยกเว้น สถานะแจ้งซ่อม + รูปภาพครุภัณฑ์ ที่จัดส่วนต่างหาก) ----
+    columns_list = [
+        c
+        for c in df.columns
+        if c not in ("รูปภาพครุภัณฑ์", "สถานะแจ้งซ่อม")
+    ]
 
-    half = (len(form_columns) + 1) // 2
-    left_cols = form_columns[:half]
-    right_cols = form_columns[half:]
+    half = (len(columns_list) + 1) // 2
+    left_cols = columns_list[:half]
+    right_cols = columns_list[half:]
 
     col_left, col_right = st.columns(2)
     updated_values: dict[str, str] = {}
@@ -929,127 +944,100 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
-    # ---------- สถานะแจ้งซ่อม ----------
-    st.markdown("#### สถานะแจ้งซ่อม")
+    # ---- ส่วนสถานะแจ้งซ่อม ----
+    st.markdown("### สถานะแจ้งซ่อม")
+    current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
+    if current_maint not in MAINT_STATUS_CHOICES:
+        current_maint = MAINT_STATUS_CHOICES[0]
 
-    maint_choices = [
-        "ยังไม่เคยแจ้งซ่อม",
-        "แจ้งซ่อมแล้ว (รอดำเนินการ)",
-        "กำลังซ่อม",
-        "ซ่อมเสร็จและกลับเข้าประจำการ",
-        "รอจำหน่าย/ทดแทน",
-    ]
-    current_maint = str(row.get(MAINT_STATUS_COL, "") or maint_choices[0])
-    if current_maint not in maint_choices:
-        maint_choices.insert(0, current_maint)
-
-    maint_status = st.selectbox(
+    maint_select = st.selectbox(
         "สถานะแจ้งซ่อม",
-        options=maint_choices,
-        index=maint_choices.index(current_maint),
-        key=f"maint_status_{selected_idx}",
+        MAINT_STATUS_CHOICES,
+        index=MAINT_STATUS_CHOICES.index(current_maint),
+        key=f"maint_status_admin_{selected_idx}",
     )
+    updated_values["สถานะแจ้งซ่อม"] = maint_select
 
-    # ---------- QR Code + รูปภาพ ----------
-    st.markdown("#### QR Code และรูปภาพครุภัณฑ์")
+    # ---- ส่วน QR + รูปภาพ ----
+    st.markdown("### QR Code และรูปภาพครุภัณฑ์")
+    qr_col, img_col = st.columns([1, 1])
 
-    col_qr, col_img = st.columns([1, 1])
-
-    asset_code = str(
-        row.get("รหัสเครื่องมือห้องปฏิบัติการ", row.get("รหัสเครื่องมือห้องปฏิบัติการ ", ""))
-    ).strip()
-
-    with col_qr:
+    with qr_col:
         st.subheader("QR Code ของครุภัณฑ์")
-        qr_path = find_qr_image_path(asset_code, row)
+        qr_path = get_qr_image_path_from_row(row)
+        qr_bytes_for_download = None
 
-        if qr_path is not None and qr_path.exists():
-            st.image(str(qr_path), width=260)
-            if asset_code:
-                st.caption(asset_code)
-            else:
-                st.caption(qr_path.name)
-            st.write("สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์ได้จากอุปกรณ์อื่น ๆ ได้เช่นกัน")
+        if qr_path and qr_path.exists():
+            st.image(str(qr_path), use_column_width=True)
+            with open(qr_path, "rb") as f:
+                qr_bytes_for_download = f.read()
         else:
-            st.info("ยังไม่พบไฟล์ QR สำหรับรายการนี้ หรือ path ไม่ถูกต้อง")
+            url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
+            qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
+            st.image(qr_bytes_for_download, use_column_width=True)
 
-    with col_img:
+        st.caption(asset_code)
+        st.write(
+            "สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน"
+        )
+
+        if qr_bytes_for_download:
+            st.download_button(
+                "⬇️ ดาวน์โหลด QR (PNG)",
+                data=qr_bytes_for_download,
+                file_name=f"{asset_code}_qr.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+
+    with img_col:
         st.subheader("รูปภาพครุภัณฑ์")
-
-        image_path_txt = str(row.get(IMAGE_COL, "")).strip()
-        image_path: Path | None = None
-        if image_path_txt:
-            cand = Path(image_path_txt)
-            if not cand.is_absolute():
-                if cand.exists():
-                    image_path = cand
-                else:
-                    alt = ASSET_IMAGE_DIR / cand.name
-                    if alt.exists():
-                        image_path = alt
-            else:
-                if cand.exists():
-                    image_path = cand
-
-        if image_path and image_path.exists():
-            st.image(str(image_path), width=260, caption="รูปภาพปัจจุบัน")
+        current_img_path = get_image_path_from_row(row)
+        if current_img_path and current_img_path.exists():
+            st.image(str(current_img_path), caption="รูปภาพปัจจุบัน", use_column_width=True)
         else:
-            st.caption("ยังไม่มีรูปภาพสำหรับรายการนี้")
+            st.info("ยังไม่มีรูปภาพสำหรับรายการนี้")
 
         uploaded_img = st.file_uploader(
             "อัปโหลดรูปภาพใหม่ (ถ้าไม่เลือก ระบบจะใช้ของเดิม)",
             type=["png", "jpg", "jpeg"],
-            key=f"upload_image_{selected_idx}",
+            key=f"upload_image_admin_{selected_idx}",
         )
-
-        if uploaded_img is not None:
-            ASSET_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-            ext = Path(uploaded_img.name).suffix.lower() or ".png"
-            safe_code = asset_code if asset_code else f"asset_{selected_idx+1}"
-            safe_code = safe_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
-            out_path = ASSET_IMAGE_DIR / f"{safe_code}{ext}"
-
-            with open(out_path, "wb") as f:
-                f.write(uploaded_img.getbuffer())
-
-            df_current = load_equipment_data()
-            if IMAGE_COL not in df_current.columns:
-                df_current[IMAGE_COL] = ""
-            df_current.at[selected_idx, IMAGE_COL] = str(out_path)
-            save_equipment_data(df_current)
-
-            st.success("อัปโหลดรูปภาพและบันทึกลงไฟล์ Excel เรียบร้อยแล้ว")
-            st.image(str(out_path), width=260, caption="รูปภาพที่เพิ่งอัปโหลด")
 
     st.write("")
     if st.button("บันทึกการแก้ไข", type="primary"):
         df_current = load_equipment_data()
-        if df_current.empty:
-            st.error("ไม่พบข้อมูลสำหรับบันทึก")
-        else:
-            # อัปเดตคอลัมน์ที่แก้ไขจากฟอร์ม text_input
-            for col in form_columns:
-                raw_val = updated_values.get(col, "")
-                orig_dtype = df_current[col].dtype if col in df_current.columns else object
+        if selected_idx >= len(df_current):
+            st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
+            return
 
-                if pd.api.types.is_numeric_dtype(orig_dtype):
-                    if raw_val == "":
-                        df_current.at[selected_idx, col] = pd.NA
-                    else:
-                        try:
-                            df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
-                        except Exception:
-                            df_current.at[selected_idx, col] = raw_val
+        # อัปเดตค่าฟิลด์ทั้งหมดตาม updated_values
+        for col in updated_values:
+            if col not in df_current.columns:
+                continue
+            raw_val = updated_values.get(col, "")
+            orig_dtype = df_current[col].dtype
+
+            if pd.api.types.is_numeric_dtype(orig_dtype):
+                if raw_val == "":
+                    df_current.at[selected_idx, col] = pd.NA
                 else:
-                    df_current.at[selected_idx, col] = raw_val
+                    try:
+                        df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
+                    except Exception:
+                        df_current.at[selected_idx, col] = raw_val
+            else:
+                df_current.at[selected_idx, col] = raw_val
 
-            # อัปเดตสถานะแจ้งซ่อม
-            if MAINT_STATUS_COL not in df_current.columns:
-                df_current[MAINT_STATUS_COL] = ""
-            df_current.at[selected_idx, MAINT_STATUS_COL] = maint_status
+        # ถ้าอัปโหลดรูปใหม่ -> เซฟและเก็บชื่อไฟล์ในคอลัมน์ "รูปภาพครุภัณฑ์"
+        if uploaded_img is not None:
+            filename = save_uploaded_image(uploaded_img, asset_code)
+            if "รูปภาพครุภัณฑ์" not in df_current.columns:
+                df_current["รูปภาพครุภัณฑ์"] = ""
+            df_current.at[selected_idx, "รูปภาพครุภัณฑ์"] = filename
 
-            save_equipment_data(df_current)
-            st.rerun()
+        save_equipment_data(df_current)
+        st.rerun()
 
 
 # =========================
@@ -1067,22 +1055,48 @@ def page_maintenance():
         st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
         return
 
-    st.info("หน้านี้สามารถต่อยอดทำ Dashboard สรุปสถานะแจ้งซ่อมได้ในอนาคต\n"
-            "ตอนนี้ดึงข้อมูลจากคอลัมน์ 'สถานะแจ้งซ่อม' ให้ดูแบบตารางก่อน")
-
-    if MAINT_STATUS_COL not in df.columns:
-        st.warning("ไฟล์ Excel ยังไม่มีคอลัมน์ 'สถานะแจ้งซ่อม'")
+    if "สถานะแจ้งซ่อม" not in df.columns:
+        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
         return
 
-    summary = (
-        df[MAINT_STATUS_COL]
-        .fillna("ยังไม่เคยแจ้งซ่อม")
+    maint_counts = (
+        df["สถานะแจ้งซ่อม"]
+        .fillna(MAINT_STATUS_CHOICES[0])
         .value_counts()
         .rename_axis("สถานะแจ้งซ่อม")
-        .reset_index(name="จำนวน")
+        .reset_index(name="count")
     )
 
-    st.dataframe(summary, hide_index=True, use_container_width=True)
+    st.markdown(
+        """
+        <div class="mem-card">
+            <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
+            <div class="mem-card-subtitle">
+                แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    chart = (
+        alt.Chart(maint_counts)
+        .mark_bar()
+        .encode(
+            x=alt.X("สถานะแจ้งซ่อม:N", sort=None, title="สถานะแจ้งซ่อม"),
+            y=alt.Y("count:Q", title="จำนวน (รายการ)"),
+            tooltip=["สถานะแจ้งซ่อม:N", "count:Q"],
+        )
+    )
+    chart = styled_chart(chart, width=500, height=320)
+    st.altair_chart(chart, use_container_width=True)
+
+    st.dataframe(
+        maint_counts.rename(columns={"count": "จำนวน (รายการ)"}),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # =========================
@@ -1094,7 +1108,7 @@ def page_summary():
         '<div class="mem-page-title">รายงานสรุป</div>',
         unsafe_allow_html=True,
     )
-    st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลในอนาคต")
+    st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
 
 
 # =========================
