@@ -315,6 +315,7 @@ def get_available_excel_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
 
+
 def init_excel_file_name():
     if "excel_file_name" in st.session_state:
         return
@@ -331,12 +332,14 @@ def init_excel_file_name():
     else:
         st.session_state["excel_file_name"] = None
 
+
 def get_current_excel_path() -> Path | None:
     init_excel_file_name()
     name = st.session_state.get("excel_file_name")
     if not name:
         return None
     return DATA_DIR / name
+
 
 def load_equipment_data() -> pd.DataFrame:
     path = get_current_excel_path()
@@ -350,6 +353,7 @@ def load_equipment_data() -> pd.DataFrame:
     except Exception as e:
         st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
         return pd.DataFrame()
+
 
 def save_equipment_data(df: pd.DataFrame):
     path = get_current_excel_path()
@@ -797,7 +801,7 @@ def page_equipment_list():
     # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
-        name = str(row.get("ชื่อครุภัณฑ์", "ไม่ทราบชื่อ"))
+        name = str(row.get("ชื่อครุภัณฑ์", row.get("ชื่อ", "ไม่ทราบชื่อ")))
         code = str(row.get("รหัสเครื่องมือห้องปฏิบัติการ", ""))
         return f"{i+1:03d} - {name} ({code})"
 
@@ -820,7 +824,7 @@ def page_equipment_list():
 
     selected_idx = st.session_state.get("selected_row_idx", 0)
 
-    # ---------- ฟอร์มรายละเอียด + QR ----------
+    # ---------- ฟอร์มรายละเอียด + QR Preview ----------
     st.markdown("### รายละเอียดครุภัณฑ์")
     st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
 
@@ -831,36 +835,28 @@ def page_equipment_list():
     row = df.iloc[selected_idx].to_dict()
     columns_list = list(df.columns)
 
-    # คอลัมน์พิเศษสำหรับ QR
-    QR_CODE_COL = "QR Code"
-    QR_PATH_COL = "_qr_image_path"
+    # เตรียม path รูป QR จากคอลัมน์ _qr_image_path ถ้ามี
+    qr_image_path_str = str(row.get("_qr_image_path", "") or "").replace("\\", "/")
+    qr_image_exists = False
+    qr_image_path = None
+    if qr_image_path_str:
+        p = Path(qr_image_path_str)
+        if not p.is_absolute():
+            p = Path.cwd() / p
+        if p.exists():
+            qr_image_path = p
+            qr_image_exists = True
 
-    qr_image_path_str = None
-    if QR_PATH_COL in row and isinstance(row[QR_PATH_COL], str) and row[QR_PATH_COL]:
-        qr_image_path_str = row[QR_PATH_COL].replace("\\", "/")
-
+    # แบ่งคอลัมน์สำหรับฟอร์มซ้าย/ขวา
     half = (len(columns_list) + 1) // 2
     left_cols = columns_list[:half]
     right_cols = columns_list[half:]
 
-    col_left, col_right = st.columns([1, 1])
+    col_left, col_right, col_qr = st.columns([1.3, 1.3, 0.9])
     updated_values = {}
 
-    # -- ด้านซ้าย: text_input ปกติ --
     with col_left:
         for col_name in left_cols:
-            if col_name == QR_PATH_COL:
-                # path รูปไม่ให้แก้ไขจากฟอร์มหลัก
-                current_val = row.get(col_name, "")
-                st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_left_{col_name}_{selected_idx}",
-                    disabled=True,
-                )
-                updated_values[col_name] = current_val
-                continue
-
             current_val = row.get(col_name, "")
             new_val = st.text_input(
                 str(col_name),
@@ -869,20 +865,8 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
-    # -- ด้านขวา: text_input + รูป QR --
     with col_right:
         for col_name in right_cols:
-            if col_name == QR_PATH_COL:
-                current_val = row.get(col_name, "")
-                st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_right_{col_name}_{selected_idx}",
-                    disabled=True,
-                )
-                updated_values[col_name] = current_val
-                continue
-
             current_val = row.get(col_name, "")
             new_val = st.text_input(
                 str(col_name),
@@ -891,20 +875,12 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
-        # แสดงรูป QR ใต้ฟิลด์ด้านขวา
-        if qr_image_path_str:
-            st.markdown("### QR Code ของครุภัณฑ์")
-            img_path = Path(qr_image_path_str.replace("\\", "/"))
-            try:
-                if not img_path.is_absolute():
-                    # รูปอยู่ในโฟลเดอร์ของโปรเจกต์ เช่น qr_images/...
-                    img_path = Path.cwd() / img_path
-                if img_path.exists():
-                    st.image(str(img_path), width=260)
-                else:
-                    st.info(f"ไม่พบไฟล์รูป QR: {qr_image_path_str}")
-            except Exception as e:
-                st.warning(f"ไม่สามารถแสดงรูป QR ได้: {e}")
+    with col_qr:
+        st.markdown("##### QR Code (Preview)")
+        if qr_image_exists and qr_image_path is not None:
+            st.image(str(qr_image_path), use_column_width=True)
+        else:
+            st.info("ยังไม่พบไฟล์ QR สำหรับรายการนี้ หรือ path ไม่ถูกต้อง")
 
     st.write("")
     if st.button("บันทึกการแก้ไข", type="primary"):
@@ -912,11 +888,6 @@ def page_equipment_list():
 
         for col in columns_list:
             raw_val = updated_values.get(col, "")
-            if col == QR_PATH_COL:
-                # path รูป QR ไม่ให้แก้จากฟอร์มนี้
-                df_current.at[selected_idx, col] = row.get(col, raw_val)
-                continue
-
             orig_dtype = df_current[col].dtype if col in df_current.columns else object
 
             if pd.api.types.is_numeric_dtype(orig_dtype):
