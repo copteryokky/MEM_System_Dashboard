@@ -6,18 +6,36 @@ from pathlib import Path
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
 
-# =========================
-# CONFIG พื้นฐาน
-# =========================
+# --------------------------------------------------
+# ค่าคงที่พื้นฐาน
+# --------------------------------------------------
+# โฟลเดอร์เก็บรูป QR (อยู่ระดับเดียวกับ app.py)
+QR_IMAGES_DIR = Path(__file__).resolve().parent / "qr_images"
+
+# ชื่อคอลัมน์สำหรับสถานะการแจ้งซ่อม
+MAINT_STATUS_COL = "สถานะแจ้งซ่อม"
+
+# ตัวเลือก dropdown สำหรับสถานะแจ้งซ่อม
+MAINT_STATUS_OPTIONS = [
+    "ยังไม่เคยแจ้งซ่อม",
+    "ต้องการแจ้งซ่อม",
+    "อยู่ระหว่างซ่อม",
+    "ซ่อมเสร็จและติดตั้งแล้ว",
+    "ไม่สามารถซ่อมได้ / จำหน่าย",
+]
+
+# --------------------------------------------------
+# CONFIG พื้นฐานของ Streamlit
+# --------------------------------------------------
 st.set_page_config(
     page_title="MEM System",
     page_icon="🩺",
     layout="wide",
 )
 
-# =========================
+# --------------------------------------------------
 # STYLE: LOGIN PAGE
-# =========================
+# --------------------------------------------------
 def set_login_style():
     st.markdown(
         """
@@ -96,9 +114,9 @@ def set_login_style():
         unsafe_allow_html=True,
     )
 
-# =========================
+# --------------------------------------------------
 # STYLE: MAIN APP
-# =========================
+# --------------------------------------------------
 def set_main_style():
     st.markdown(
         """
@@ -308,9 +326,9 @@ def set_main_style():
         unsafe_allow_html=True,
     )
 
-# =========================
+# --------------------------------------------------
 # UTIL: Excel helpers
-# =========================
+# --------------------------------------------------
 def get_available_excel_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
@@ -342,6 +360,10 @@ def get_current_excel_path() -> Path | None:
 
 
 def load_equipment_data() -> pd.DataFrame:
+    """
+    โหลดข้อมูลจาก Excel
+    ถ้าไม่มีคอลัมน์ 'สถานะแจ้งซ่อม' จะสร้างคอลัมน์ใหม่ให้เลย
+    """
     path = get_current_excel_path()
     if path is None or not path.exists():
         return pd.DataFrame()
@@ -349,6 +371,11 @@ def load_equipment_data() -> pd.DataFrame:
     try:
         df = pd.read_excel(path)
         df = df.dropna(how="all").reset_index(drop=True)
+
+        # ถ้าไม่มีคอลัมน์สถานะแจ้งซ่อม ให้สร้างเพิ่ม
+        if MAINT_STATUS_COL not in df.columns:
+            df[MAINT_STATUS_COL] = ""
+
         return df
     except Exception as e:
         st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
@@ -356,6 +383,9 @@ def load_equipment_data() -> pd.DataFrame:
 
 
 def save_equipment_data(df: pd.DataFrame):
+    """
+    บันทึก DataFrame กลับลงไฟล์ Excel ในโฟลเดอร์ data
+    """
     path = get_current_excel_path()
     if path is None:
         st.error("ยังไม่ได้เลือกไฟล์ Excel ที่จะบันทึก")
@@ -368,9 +398,9 @@ def save_equipment_data(df: pd.DataFrame):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
 
-# =========================
-# หน้า Login
-# =========================
+# --------------------------------------------------
+# LOGIN PAGE
+# --------------------------------------------------
 def login_page():
     set_login_style()
 
@@ -402,9 +432,9 @@ def login_page():
         else:
             st.error("username หรือ password ไม่ถูกต้อง")
 
-# =========================
+# --------------------------------------------------
 # Helper: ใส่สไตล์ใน Altair chart
-# =========================
+# --------------------------------------------------
 def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
     return (
         chart.properties(width=width, height=height)
@@ -415,9 +445,9 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
         )
     )
 
-# =========================
-# หน้า "หน้าหลัก" + Dashboard
-# =========================
+# --------------------------------------------------
+# หน้า "หน้าหลัก" + Dashboard (ตามสถานะการใช้งาน)
+# --------------------------------------------------
 def page_home():
     set_main_style()
 
@@ -675,9 +705,9 @@ def page_home():
         )
         st.markdown(loc_hero_html, unsafe_allow_html=True)
 
-# =========================
+# --------------------------------------------------
 # Helper: ตาราง + เลือกแถว (สำหรับลบ)
-# =========================
+# --------------------------------------------------
 def equipment_table_with_selection(df: pd.DataFrame):
     df_with_sel = df.copy()
     if "เลือก" not in df_with_sel.columns:
@@ -700,9 +730,9 @@ def equipment_table_with_selection(df: pd.DataFrame):
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
 
-# =========================
-# หน้า "รายการครุภัณฑ์"
-# =========================
+# --------------------------------------------------
+# หน้า "รายการครุภัณฑ์" + ฟอร์มรายละเอียด + QR Preview
+# --------------------------------------------------
 def page_equipment_list():
     set_main_style()
     st.markdown(
@@ -801,7 +831,7 @@ def page_equipment_list():
     # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
-        name = str(row.get("ชื่อครุภัณฑ์", row.get("ชื่อ", "ไม่ทราบชื่อ")))
+        name = str(row.get("ชื่อครุภัณฑ์", "ไม่ทราบชื่อ"))
         code = str(row.get("รหัสเครื่องมือห้องปฏิบัติการ", ""))
         return f"{i+1:03d} - {name} ({code})"
 
@@ -835,59 +865,99 @@ def page_equipment_list():
     row = df.iloc[selected_idx].to_dict()
     columns_list = list(df.columns)
 
-    # เตรียม path รูป QR จากคอลัมน์ _qr_image_path ถ้ามี
-    qr_image_path_str = str(row.get("_qr_image_path", "") or "").replace("\\", "/")
-    qr_image_exists = False
-    qr_image_path = None
-    if qr_image_path_str:
-        p = Path(qr_image_path_str)
-        if not p.is_absolute():
-            p = Path.cwd() / p
-        if p.exists():
-            qr_image_path = p
-            qr_image_exists = True
+    # helper สำหรับแสดงฟิลด์แต่ละตัว (มี special case สำหรับคอลัมน์สถานะแจ้งซ่อม)
+    def render_field(col_name: str, current_val, key_prefix: str) -> str:
+        display_label = str(col_name)
+        value_str = "" if pd.isna(current_val) else str(current_val)
 
-    # แบ่งคอลัมน์สำหรับฟอร์มซ้าย/ขวา
-    half = (len(columns_list) + 1) // 2
-    left_cols = columns_list[:half]
-    right_cols = columns_list[half:]
+        if col_name == MAINT_STATUS_COL:
+            # dropdown สำหรับสถานะแจ้งซ่อม
+            options = MAINT_STATUS_OPTIONS.copy()
+            if value_str and value_str not in options:
+                options.insert(0, value_str)
 
-    col_left, col_right, col_qr = st.columns([1.3, 1.3, 0.9])
+            try:
+                default_index = options.index(value_str) if value_str in options else 0
+            except ValueError:
+                default_index = 0
+
+            selected = st.selectbox(
+                display_label,
+                options=options,
+                index=default_index,
+                key=f"{key_prefix}_{col_name}_{selected_idx}",
+            )
+            return selected
+        else:
+            new_val = st.text_input(
+                display_label,
+                value=value_str,
+                key=f"{key_prefix}_{col_name}_{selected_idx}",
+            )
+            return new_val
+
+    # layout: ซ้าย = ฟอร์ม 2 คอลัมน์, ขวา = QR Preview
+    form_col, qr_col = st.columns([2, 1])
+
     updated_values = {}
 
-    with col_left:
-        for col_name in left_cols:
-            current_val = row.get(col_name, "")
-            new_val = st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"detail_left_{col_name}_{selected_idx}",
-            )
-            updated_values[col_name] = new_val
+    with form_col:
+        half = (len(columns_list) + 1) // 2
+        left_cols = columns_list[:half]
+        right_cols = columns_list[half:]
 
-    with col_right:
-        for col_name in right_cols:
-            current_val = row.get(col_name, "")
-            new_val = st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"detail_right_{col_name}_{selected_idx}",
-            )
-            updated_values[col_name] = new_val
+        col_left, col_right = st.columns(2)
 
-    with col_qr:
-        st.markdown("##### QR Code (Preview)")
-        if qr_image_exists and qr_image_path is not None:
-            st.image(str(qr_image_path), use_column_width=True)
+        with col_left:
+            for col_name in left_cols:
+                current_val = row.get(col_name, "")
+                updated_values[col_name] = render_field(
+                    col_name, current_val, "detail_left"
+                )
+
+        with col_right:
+            for col_name in right_cols:
+                current_val = row.get(col_name, "")
+                updated_values[col_name] = render_field(
+                    col_name, current_val, "detail_right"
+                )
+
+    # ---------------- QR PREVIEW ด้านขวา ----------------
+    with qr_col:
+        st.subheader("QR Code (Preview)")
+
+        qr_path = None
+        qr_colname = "_qr_image_path"
+
+        if qr_colname in df.columns:
+            raw = str(df.iloc[selected_idx].get(qr_colname, "")).strip()
+            raw = raw.replace("\\", "/")
+            if raw and raw.lower() != "nan":
+                filename = Path(raw).name
+                candidate = QR_IMAGES_DIR / filename
+                if candidate.exists():
+                    qr_path = candidate
+
+        if qr_path and qr_path.exists():
+            st.image(str(qr_path), use_column_width=True)
+            asset_code = str(row.get("รหัสเครื่องมือห้องปฏิบัติการ", "") or "")
+            if asset_code:
+                st.caption(asset_code)
         else:
             st.info("ยังไม่พบไฟล์ QR สำหรับรายการนี้ หรือ path ไม่ถูกต้อง")
 
+    # ---------- ปุ่มบันทึก ----------
     st.write("")
     if st.button("บันทึกการแก้ไข", type="primary"):
         df_current = load_equipment_data()
 
         for col in columns_list:
             raw_val = updated_values.get(col, "")
+            # ถ้าเป็นสถานะแจ้งซ่อมให้เก็บเป็น string ตาม dropdown
+            if col == MAINT_STATUS_COL:
+                df_current.at[selected_idx, col] = str(raw_val)
+                continue
+
             orig_dtype = df_current[col].dtype if col in df_current.columns else object
 
             if pd.api.types.is_numeric_dtype(orig_dtype):
@@ -904,20 +974,160 @@ def page_equipment_list():
         save_equipment_data(df_current)
         st.rerun()
 
-# =========================
-# หน้า "แจ้งซ่อม / บำรุงรักษา"
-# =========================
+# --------------------------------------------------
+# หน้า "แจ้งซ่อม / บำรุงรักษา" – Dashboard ตามสถานะแจ้งซ่อม
+# --------------------------------------------------
 def page_maintenance():
     set_main_style()
     st.markdown(
         '<div class="mem-page-title">แจ้งซ่อม / บำรุงรักษา</div>',
         unsafe_allow_html=True,
     )
-    st.info("ส่วนนี้ยังเป็นโครงเปล่าไว้ก่อน สามารถออกแบบฟอร์มแจ้งซ่อม/ประวัติซ่อมได้ภายหลัง")
+    st.markdown(
+        '<div class="mem-page-subtitle">'
+        'ภาพรวมสถานะการแจ้งซ่อมของครุภัณฑ์ทั้งหมด (ใช้คอลัมน์ "สถานะแจ้งซ่อม" จากไฟล์ Excel ปัจจุบัน)'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-# =========================
-# หน้า "รายงานสรุป"
-# =========================
+    df = load_equipment_data()
+    if df.empty:
+        st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
+        return
+
+    # เตรียมข้อมูลสถานะแจ้งซ่อม
+    series = (
+        df[MAINT_STATUS_COL]
+        .astype(str)
+        .replace("nan", "")
+        .replace("None", "")
+        .replace("NaT", "")
+    )
+    series = series.replace("", "ยังไม่เคยแจ้งซ่อม")
+
+    maint_counts = (
+        series.value_counts()
+        .rename_axis("สถานะแจ้งซ่อม")
+        .reset_index(name="count")
+    )
+
+    total = int(maint_counts["count"].sum())
+    maint_counts["percent"] = maint_counts["count"] / max(total, 1)
+    maint_counts["label_short"] = maint_counts.apply(
+        lambda r: f"{r['percent']*100:.1f}%", axis=1
+    )
+
+    # สีสำหรับสถานะแจ้งซ่อม (สุภาพ ๆ)
+    color_list = [
+        "#6b7280",  # gray
+        "#f97316",  # orange
+        "#0ea5e9",  # sky
+        "#22c55e",  # green
+        "#ef4444",  # red
+        "#8b5cf6",  # violet
+    ]
+    colors = color_list * ((len(maint_counts) // len(color_list)) + 1)
+
+    alt_color_scale = alt.Scale(
+        domain=list(maint_counts["สถานะแจ้งซ่อม"]),
+        range=colors[: len(maint_counts)],
+    )
+
+    # Hero card ด้านบน
+    st.markdown(
+        f"""
+        <div class="mem-hero">
+            <div class="mem-hero-title">สรุปสถานะการแจ้งซ่อม</div>
+            <div class="mem-hero-sub">
+                แสดงจำนวนครุภัณฑ์แบ่งตามสถานะการแจ้งซ่อม รวมทั้งจำนวนทั้งหมดในระบบ
+            </div>
+            <div class="mem-hero-metrics">
+                <div class="mem-hero-metric">
+                    <div class="mem-hero-metric-label">จำนวนครุภัณฑ์ทั้งหมด</div>
+                    <div class="mem-hero-metric-value">{total}</div>
+                    <span class="mem-hero-metric-pill">รายการ</span>
+                </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    # เพิ่ม metric ย่อยตามสถานะแจ้งซ่อม
+    metric_html = []
+    for _, r in maint_counts.iterrows():
+        label = str(r["สถานะแจ้งซ่อม"])
+        cnt = int(r["count"])
+        metric_html.append(
+            f"""
+            <div class="mem-hero-metric">
+                <div class="mem-hero-metric-label">{label}</div>
+                <div class="mem-hero-metric-value">{cnt}</div>
+                <span class="mem-hero-metric-pill">สถานะแจ้งซ่อม</span>
+            </div>
+            """
+        )
+
+    st.markdown("".join(metric_html) + "</div></div>", unsafe_allow_html=True)
+
+    # Donut chart + ตาราง
+    base_pie = (
+        alt.Chart(maint_counts)
+        .encode(
+            theta=alt.Theta("count:Q", stack=True),
+            color=alt.Color(
+                "สถานะแจ้งซ่อม:N",
+                scale=alt_color_scale,
+                legend=alt.Legend(title="สถานะแจ้งซ่อม"),
+            ),
+            tooltip=[
+                alt.Tooltip("สถานะแจ้งซ่อม:N", title="สถานะ"),
+                alt.Tooltip("count:Q", title="จำนวน"),
+                alt.Tooltip("percent:Q", title="สัดส่วน", format=".1%"),
+            ],
+        )
+    )
+
+    pie = base_pie.mark_arc(
+        outerRadius=150,
+        innerRadius=70,
+        stroke="white",
+        strokeWidth=2,
+    )
+
+    labels = (
+        base_pie.mark_text(radius=110, size=13, color="#111827", fontWeight="bold")
+        .encode(text="label_short:N")
+    )
+
+    pie_chart = styled_chart(pie + labels, width=420, height=320)
+
+    table_df = maint_counts[["สถานะแจ้งซ่อม", "count"]].copy()
+    table_df.rename(columns={"count": "จำนวน (รายการ)"}, inplace=True)
+
+    st.markdown(
+        """
+        <div class="mem-card">
+            <div class="mem-card-title">สัดส่วนครุภัณฑ์ตามสถานะการแจ้งซ่อม</div>
+            <div class="mem-card-subtitle">
+                ช่วยให้เห็นภาพรวมว่าครุภัณฑ์ส่วนใหญ่อยู่ในขั้นตอนใดของการแจ้งซ่อม / ซ่อมแล้ว
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_pie, col_table = st.columns([1, 1])
+    with col_pie:
+        st.altair_chart(pie_chart, use_container_width=True)
+
+    with col_table:
+        st.markdown('<div class="mem-status-table">', unsafe_allow_html=True)
+        st.dataframe(table_df, hide_index=True, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# --------------------------------------------------
+# หน้า "รายงานสรุป" (เว้นไว้ก่อน)
+# --------------------------------------------------
 def page_summary():
     set_main_style()
     st.markdown(
@@ -926,9 +1136,9 @@ def page_summary():
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลในอนาคต")
 
-# =========================
+# --------------------------------------------------
 # MAIN APP หลัง Login
-# =========================
+# --------------------------------------------------
 def main_app():
     set_main_style()
 
@@ -986,9 +1196,9 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
-# =========================
+# --------------------------------------------------
 # ENTRY POINT
-# =========================
+# --------------------------------------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "current_menu" not in st.session_state:
