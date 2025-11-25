@@ -17,4 +17,4 @@ Thumbs.db
 .pytest_cache/
 */__pycache__/
 
-data/*.xlsx
+# data/*.xlsx
