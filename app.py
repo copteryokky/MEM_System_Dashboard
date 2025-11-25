@@ -238,6 +238,7 @@ def set_main_style():
             color: #1d4ed8;
         }
 
+        /* legend สถานะ – บรรทัดเดียว เลื่อนแนวนอนได้ */
         .mem-status-legend-wrapper{
             margin-top: 10px;
             overflow-x: auto;
@@ -266,6 +267,7 @@ def set_main_style():
             border-radius: 999px;
         }
 
+        /* CARD ล้อมกราฟ */
         .mem-card{
             background: #FFFFFF;
             border-radius: 32px;
@@ -313,7 +315,6 @@ def get_available_excel_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
 
-
 def init_excel_file_name():
     if "excel_file_name" in st.session_state:
         return
@@ -330,14 +331,12 @@ def init_excel_file_name():
     else:
         st.session_state["excel_file_name"] = None
 
-
 def get_current_excel_path() -> Path | None:
     init_excel_file_name()
     name = st.session_state.get("excel_file_name")
     if not name:
         return None
     return DATA_DIR / name
-
 
 def load_equipment_data() -> pd.DataFrame:
     path = get_current_excel_path()
@@ -351,7 +350,6 @@ def load_equipment_data() -> pd.DataFrame:
     except Exception as e:
         st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
         return pd.DataFrame()
-
 
 def save_equipment_data(df: pd.DataFrame):
     path = get_current_excel_path()
@@ -535,52 +533,46 @@ def page_home():
         'สรุปจำนวนครุภัณฑ์ทั้งหมด แยกตามสถานะ และจำนวนตามสถานที่ใช้งานจากข้อมูลล่าสุดในระบบ'
         '</div>'
         '<div class="mem-hero-metrics">'
-        # 1
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">รวมครุภัณฑ์ทั้งหมด</div>'
         f'<div class="mem-hero-metric-value">{cnt_total}</div>'
         '<span class="mem-hero-metric-pill">ทั้งหมด</span>'
         '</div>'
-        # 2
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">พร้อมใช้งาน</div>'
         f'<div class="mem-hero-metric-value">{cnt_ready}</div>'
         '<span class="mem-hero-metric-pill" '
         'style="background:#dcfce7;color:#166534;">สถานะดี</span>'
         '</div>'
-        # 3
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมได้)</div>'
         f'<div class="mem-hero-metric-value">{cnt_repairable}</div>'
         '<span class="mem-hero-metric-pill" '
         'style="background:#ffedd5;color:#9a3412;">ต้องซ่อมแซม</span>'
         '</div>'
-        # 4
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมไม่ได้)</div>'
         f'<div class="mem-hero-metric-value">{cnt_unrepairable}</div>'
         '<span class="mem-hero-metric-pill" '
         'style="background:#fee2e2;color:#991b1b;">พิจารณาจัดหาใหม่</span>'
         '</div>'
-        # 5
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">ตรวจไม่พบ / สูญหาย</div>'
         f'<div class="mem-hero-metric-value">{cnt_missing}</div>'
         '<span class="mem-hero-metric-pill" '
         'style="background:#e5e7eb;color:#111827;">ติดตามตรวจสอบ</span>'
         '</div>'
-        # 6
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">จำนวนสถานที่ใช้งานทั้งหมด</div>'
         f'<div class="mem-hero-metric-value">{loc_total}</div>'
         '<span class="mem-hero-metric-pill">ตามไฟล์ Excel</span>'
         '</div>'
-        # 7
-        '<div class="mem-hero-metric">'
+        f'<div class="mem-hero-metric">'
         '<div class="mem-hero-metric-label">สถานที่ที่มีครุภัณฑ์มากที่สุด</div>'
         f'<div class="mem-hero-metric-value" style="font-size:14px;">{top_loc_name}</div>'
-        '<span class="mem-hero-metric-pill" '
-        f'style="background:#cffafe;color:#0f766e;">{top_loc_count} รายการ</span>'
+        f'<span class="mem-hero-metric-pill" '
+        'style="background:#cffafe;color:#0f766e;">'
+        f'{top_loc_count} รายการ</span>'
         '</div>'
         '</div>'
         '<div class="mem-status-legend-wrapper"><div class="mem-status-legend">'
@@ -747,9 +739,7 @@ def page_equipment_list():
                     st.rerun()
             with col_path:
                 path = DATA_DIR / current_name
-                st.caption(
-                    f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`"
-                )
+                st.caption(f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`")
 
     with st.expander("📁 อัปโหลดไฟล์ Excel ใหม่ (เพิ่ม/แทนที่ไฟล์เดิม)", expanded=False):
         uploaded = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"])
@@ -830,6 +820,7 @@ def page_equipment_list():
 
     selected_idx = st.session_state.get("selected_row_idx", 0)
 
+    # ---------- ฟอร์มรายละเอียด + QR ----------
     st.markdown("### รายละเอียดครุภัณฑ์")
     st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
 
@@ -839,15 +830,37 @@ def page_equipment_list():
 
     row = df.iloc[selected_idx].to_dict()
     columns_list = list(df.columns)
+
+    # คอลัมน์พิเศษสำหรับ QR
+    QR_CODE_COL = "QR Code"
+    QR_PATH_COL = "_qr_image_path"
+
+    qr_image_path_str = None
+    if QR_PATH_COL in row and isinstance(row[QR_PATH_COL], str) and row[QR_PATH_COL]:
+        qr_image_path_str = row[QR_PATH_COL].replace("\\", "/")
+
     half = (len(columns_list) + 1) // 2
     left_cols = columns_list[:half]
     right_cols = columns_list[half:]
 
-    col_left, col_right = st.columns(2)
+    col_left, col_right = st.columns([1, 1])
     updated_values = {}
 
+    # -- ด้านซ้าย: text_input ปกติ --
     with col_left:
         for col_name in left_cols:
+            if col_name == QR_PATH_COL:
+                # path รูปไม่ให้แก้ไขจากฟอร์มหลัก
+                current_val = row.get(col_name, "")
+                st.text_input(
+                    str(col_name),
+                    value="" if pd.isna(current_val) else str(current_val),
+                    key=f"detail_left_{col_name}_{selected_idx}",
+                    disabled=True,
+                )
+                updated_values[col_name] = current_val
+                continue
+
             current_val = row.get(col_name, "")
             new_val = st.text_input(
                 str(col_name),
@@ -856,8 +869,20 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
+    # -- ด้านขวา: text_input + รูป QR --
     with col_right:
         for col_name in right_cols:
+            if col_name == QR_PATH_COL:
+                current_val = row.get(col_name, "")
+                st.text_input(
+                    str(col_name),
+                    value="" if pd.isna(current_val) else str(current_val),
+                    key=f"detail_right_{col_name}_{selected_idx}",
+                    disabled=True,
+                )
+                updated_values[col_name] = current_val
+                continue
+
             current_val = row.get(col_name, "")
             new_val = st.text_input(
                 str(col_name),
@@ -866,12 +891,32 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
+        # แสดงรูป QR ใต้ฟิลด์ด้านขวา
+        if qr_image_path_str:
+            st.markdown("### QR Code ของครุภัณฑ์")
+            img_path = Path(qr_image_path_str.replace("\\", "/"))
+            try:
+                if not img_path.is_absolute():
+                    # รูปอยู่ในโฟลเดอร์ของโปรเจกต์ เช่น qr_images/...
+                    img_path = Path.cwd() / img_path
+                if img_path.exists():
+                    st.image(str(img_path), width=260)
+                else:
+                    st.info(f"ไม่พบไฟล์รูป QR: {qr_image_path_str}")
+            except Exception as e:
+                st.warning(f"ไม่สามารถแสดงรูป QR ได้: {e}")
+
     st.write("")
     if st.button("บันทึกการแก้ไข", type="primary"):
         df_current = load_equipment_data()
 
         for col in columns_list:
             raw_val = updated_values.get(col, "")
+            if col == QR_PATH_COL:
+                # path รูป QR ไม่ให้แก้จากฟอร์มนี้
+                df_current.at[selected_idx, col] = row.get(col, raw_val)
+                continue
+
             orig_dtype = df_current[col].dtype if col in df_current.columns else object
 
             if pd.api.types.is_numeric_dtype(orig_dtype):
