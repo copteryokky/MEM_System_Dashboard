@@ -120,7 +120,7 @@ def set_landing_style():
 .landing-feature-highlight{
     display: flex;
     justify-content: center;
-    margin-bottom: 1rem;
+    margin-bottom: 1.3rem;
 }
 .landing-feature-highlight-card{
     max-width: 520px;
@@ -153,7 +153,7 @@ def set_landing_style():
     color: #6b7280;
 }
 
-/* 3 ขั้นตอน */
+/* การ์ด 3 กลุ่มผู้ใช้งาน */
 .landing-steps-wrapper{
     display:flex;
     gap:10px;
@@ -170,15 +170,15 @@ def set_landing_style():
     box-shadow:0 10px 22px rgba(15,23,42,0.08);
 }
 .landing-step-number{
-    width:24px;
-    height:24px;
+    width:26px;
+    height:26px;
     border-radius:999px;
     background:#2563eb;
     color:#ffffff;
     display:flex;
     align-items:center;
     justify-content:center;
-    font-size:12px;
+    font-size:14px;
     margin-bottom:6px;
 }
 .landing-step-content-title{
@@ -601,23 +601,25 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
 def landing_page():
     set_landing_style()
 
+    # ส่วนหัว
     st.markdown(
         """
 <div class="landing-wrapper">
-<div class="landing-badge">ระบบบริหารจัดการเครื่องมือแพทย์ & ห้องปฏิบัติการ</div>
-<h1 class="landing-title">
-บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและ<br/>
-ปลอดภัย แบบ <span>Real-time</span>
-</h1>
-<p class="landing-subtitle">
-จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม
-และข้อมูลห้องปฏิบัติการ ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
-</p>
+  <div class="landing-badge">ระบบบริหารจัดการเครื่องมือแพทย์ & ห้องปฏิบัติการ</div>
+  <h1 class="landing-title">
+    บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและ<br/>
+    ปลอดภัย แบบ <span>Real-time</span>
+  </h1>
+  <p class="landing-subtitle">
+    จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม
+    และข้อมูลห้องปฏิบัติการ ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
+  </p>
 </div>
         """,
         unsafe_allow_html=True,
     )
 
+    # ปุ่ม
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         start_clicked = st.button("เริ่มใช้งานระบบ", type="primary", use_container_width=True)
@@ -638,66 +640,69 @@ def landing_page():
         st.session_state.app_mode = "login"
         st.rerun()
 
+    # การ์ดตกแต่งด้านล่าง (ไม่มีสอน 3 ขั้นตอนแล้ว)
     st.markdown(
         """
 <div class="landing-section">
-<div class="landing-section-title">คุณสมบัติเด่นที่รองรับระบบ</div>
-<div class="landing-section-subtitle">
-ออกแบบมาเพื่อหน่วยงานด้านสาธารณสุข ใช้งานง่ายทั้งแพทย์ พยาบาล และทีมช่างเทคนิค
-รองรับการทำงานทั้งด้านทะเบียนครุภัณฑ์ งาน PM และการติดตามแจ้งซ่อมในระบบเดียว
-</div>
+  <div class="landing-section-title">คุณสมบัติเด่นที่รองรับระบบ</div>
+  <div class="landing-section-subtitle">
+    ออกแบบมาเพื่อหน่วยงานด้านสาธารณสุข ใช้งานง่ายทั้งแพทย์ พยาบาล ทีมช่างเทคนิค และผู้บริหาร
+    รองรับงานทะเบียนครุภัณฑ์ งาน PM และการติดตามแจ้งซ่อมในระบบเดียว
+  </div>
 
-<div class="landing-feature-highlight">
-<div class="landing-feature-highlight-card">
-<div class="landing-feature-icon">📋</div>
-<div>
-<div class="landing-feature-text-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
-<div class="landing-feature-text-body">
-บันทึกรายละเอียดเครื่องมือแพทย์ครบถ้วน ตั้งแต่เลขครุภัณฑ์ รุ่น Serial Number
-อายุการใช้งาน ต้นทุนต่อหน่วย ไปจนถึงข้อมูลการทดสอบสอบเทียบ
-</div>
-</div>
-</div>
-</div>
+  <!-- การ์ดคุณสมบัติหลัก -->
+  <div class="landing-feature-highlight">
+    <div class="landing-feature-highlight-card">
+      <div class="landing-feature-icon">📋</div>
+      <div>
+        <div class="landing-feature-text-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
+        <div class="landing-feature-text-body">
+          บันทึกรายละเอียดเครื่องมือแพทย์ครบถ้วน ตั้งแต่เลขครุภัณฑ์ รุ่น Serial Number อายุการใช้งาน
+          ต้นทุนต่อหน่วย ไปจนถึงข้อมูลการทดสอบสอบเทียบ เพื่อเตรียมข้อมูลให้พร้อมสำหรับการประเมินคุณภาพ
+        </div>
+      </div>
+    </div>
+  </div>
 
-<div style="font-size:12px; color:#6b7280; margin-bottom:0.8rem;">
-เริ่มใช้งานง่ายใน 3 ขั้นตอน
-</div>
+  <!-- การ์ด 3 กลุ่มผู้ใช้งาน -->
+  <div style="font-size:12px; color:#6b7280; margin-bottom:0.8rem; text-align:center;">
+    รองรับการทำงานของทุกฝ่ายในโรงพยาบาล ด้วยมุมมองที่ออกแบบเฉพาะสำหรับแต่ละบทบาท
+  </div>
 
-<div class="landing-steps-wrapper">
-<div class="landing-step-card">
-<div class="landing-step-number">1</div>
-<div>
-<div class="landing-step-content-title">นำเข้าข้อมูลจากไฟล์ Excel</div>
-<div class="landing-step-content-body">
-ใช้ไฟล์ทะเบียนครุภัณฑ์เดิมของโรงพยาบาลนำเข้าได้ทันที ไม่ต้องคีย์ใหม่
-รองรับการอัปเดตข้อมูลในอนาคต
-</div>
-</div>
-</div>
+  <div class="landing-steps-wrapper">
+    <div class="landing-step-card">
+      <div class="landing-step-number">🏥</div>
+      <div>
+        <div class="landing-step-content-title">ห้องปฏิบัติการ & หน่วยงานใช้งาน</div>
+        <div class="landing-step-content-body">
+          ค้นหาเครื่องมือที่ต้องการใช้งานได้รวดเร็ว เห็นสถานะพร้อมใช้ / ชำรุด / รอซ่อมแบบชัดเจน
+          ลดการสับสนเรื่องการจองและการหมุนเวียนเครื่องมือในแต่ละแผนก
+        </div>
+      </div>
+    </div>
 
-<div class="landing-step-card">
-<div class="landing-step-number">2</div>
-<div>
-<div class="landing-step-content-title">ติด QR Code ให้เครื่องมือแต่ละตัว</div>
-<div class="landing-step-content-body">
-สแกนแล้วเข้าหน้าข้อมูลครุภัณฑ์ได้เลย
-แก้ไขสถานะการใช้งาน แจ้งซ่อม และแนบรูปภาพได้จากมือถือหรือแท็บเล็ต
-</div>
-</div>
-</div>
+    <div class="landing-step-card">
+      <div class="landing-step-number">🛠️</div>
+      <div>
+        <div class="landing-step-content-title">ทีมซ่อมบำรุง & วิศวกรชีวการแพทย์</div>
+        <div class="landing-step-content-body">
+          รับแจ้งซ่อมจากหน้างานได้ทันที พร้อมบันทึกรายการซ่อม ประวัติการเปลี่ยนอะไหล่
+          และวางแผน PM ล่วงหน้า ลดโอกาสที่เครื่องมือหยุดให้บริการแบบไม่คาดคิด
+        </div>
+      </div>
+    </div>
 
-<div class="landing-step-card">
-<div class="landing-step-number">3</div>
-<div>
-<div class="landing-step-content-title">ดูภาพรวมสถานะ แบบ Real-time</div>
-<div class="landing-step-content-body">
-Dashboard แสดงจำนวนเครื่องมือพร้อมใช้ ชำรุด รอซ่อม และปลดระวาง
-ช่วยเตรียมข้อมูลสำหรับการตรวจประเมินมาตรฐานได้ทันที
-</div>
-</div>
-</div>
-</div>
+    <div class="landing-step-card">
+      <div class="landing-step-number">📊</div>
+      <div>
+        <div class="landing-step-content-title">ผู้บริหาร & งานบริหารคุณภาพ</div>
+        <div class="landing-step-content-body">
+          Dashboard แสดงภาพรวมครุภัณฑ์พร้อมใช้ ชำรุด และปลดระวาง
+          ช่วยจัดลำดับความสำคัญในการจัดหาและปรับปรุงระบบ รองรับการตรวจประเมินมาตรฐานต่าง ๆ
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
         """,
         unsafe_allow_html=True,
@@ -769,10 +774,10 @@ def page_home():
     st.markdown(
         """
 <div style="margin-bottom: 0.2rem;">
-<div class="mem-page-title">หน้าหลัก</div>
-<div class="mem-page-subtitle">
-ภาพรวมการจัดการครุภัณฑ์ และเครื่องมือห้องปฏิบัติการ (ดึงข้อมูลจากไฟล์ Excel ที่เลือกอยู่)
-</div>
+  <div class="mem-page-title">หน้าหลัก</div>
+  <div class="mem-page-subtitle">
+    ภาพรวมการจัดการครุภัณฑ์ และเครื่องมือห้องปฏิบัติการ (ดึงข้อมูลจากไฟล์ Excel ที่เลือกอยู่)
+  </div>
 </div>
         """,
         unsafe_allow_html=True,
@@ -966,10 +971,10 @@ def page_home():
     st.markdown(
         """
 <div class="mem-card">
-<div class="mem-card-title">สัดส่วนตามสถานะครุภัณฑ์</div>
-<div class="mem-card-subtitle">
-แสดงสัดส่วนและจำนวนครุภัณฑ์แต่ละสถานะ ช่วยให้เห็นภาพรวมความพร้อมใช้งานของครุภัณฑ์ทั้งหมด
-</div>
+  <div class="mem-card-title">สัดส่วนตามสถานะครุภัณฑ์</div>
+  <div class="mem-card-subtitle">
+    แสดงสัดส่วนและจำนวนครุภัณฑ์แต่ละสถานะ ช่วยให้เห็นภาพรวมความพร้อมใช้งานของครุภัณฑ์ทั้งหมด
+  </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1312,7 +1317,7 @@ def page_maintenance():
         return
 
     if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
+        st.warning("ไม่พบคอลัมน์ \'สถานะแจ้งซ่อม\' ในไฟล์ Excel")
         return
 
     maint_counts = (
@@ -1326,10 +1331,10 @@ def page_maintenance():
     st.markdown(
         """
 <div class="mem-card">
-<div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
-<div class="mem-card-subtitle">
-แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
-</div>
+  <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
+  <div class="mem-card-subtitle">
+    แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
+  </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1375,9 +1380,9 @@ def main_app():
         st.markdown(
             f"""
 <div class="mem-sidebar-user">
-<div style="font-size:28px; font-weight:700; margin-bottom:4px;">AD</div>
-<div class="mem-sidebar-user-name">{st.session_state.get('display_name', 'admin')}</div>
-<div class="mem-sidebar-user-sub">เข้าสู่ระบบสำเร็จ</div>
+  <div style="font-size:28px; font-weight:700; margin-bottom:4px;">AD</div>
+  <div class="mem-sidebar-user-name">{st.session_state.get('display_name', 'admin')}</div>
+  <div class="mem-sidebar-user-sub">เข้าสู่ระบบสำเร็จ</div>
 </div>
             """,
             unsafe_allow_html=True,
