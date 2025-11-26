@@ -451,14 +451,16 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
 def landing_page():
     set_main_style()
 
+    # Hero ส่วนบน
     st.markdown(
         """
         <div style="
             text-align:center;
-            padding: 3.5rem 1rem 3rem;
+            padding: 3.5rem 1rem 2.3rem;
             background: radial-gradient(circle at top,#e0f2fe,#eef2ff,#ffffff);
             border-radius: 0 0 40px 40px;
-            margin: -1.5rem -3rem 2rem -3rem;
+            margin: -1.5rem -3rem 2.5rem -3rem;
+            box-shadow: 0 18px 40px rgba(15,23,42,0.08);
         ">
             <div style="font-size:14px; color:#4b5563; margin-bottom:0.3rem;">
                 ระบบบริหารจัดการเครื่องมือแพทย์ & ห้องปฏิบัติการ
@@ -476,6 +478,7 @@ def landing_page():
         unsafe_allow_html=True,
     )
 
+    # ปุ่มเริ่มใช้งาน / เข้าสู่ระบบ
     col_l, col_c, col_r = st.columns([1, 1, 1])
 
     with col_c:
@@ -487,6 +490,160 @@ def landing_page():
             "</div>",
             unsafe_allow_html=True,
         )
+
+    # การ์ดคุณสมบัติหลัก 3 ใบ
+    st.markdown(
+        """
+        <div style="max-width:1000px; margin:2.5rem auto 2.0rem;">
+            <div style="text-align:center; font-size:18px; font-weight:700; color:#111827; margin-bottom:0.5rem;">
+                คุณสมบัติหลักของระบบ
+            </div>
+            <div style="text-align:center; font-size:13px; color:#6b7280; margin-bottom:1.3rem;">
+                ออกแบบมาเพื่อหน่วยงานสาธารณสุขและโรงพยาบาล ใช้งานง่าย ครบทั้งทะเบียนครุภัณฑ์ แผน PM และการติดตามแจ้งซ่อม
+            </div>
+            <div style="
+                display:flex;
+                flex-wrap:wrap;
+                gap:16px;
+                justify-content:center;
+            ">
+                <div style="
+                    flex:1 1 260px;
+                    max-width:300px;
+                    background:#ffffff;
+                    border-radius:22px;
+                    padding:16px 18px;
+                    box-shadow:0 14px 30px rgba(15,23,42,0.06);
+                    border:1px solid #e5e7eb;
+                ">
+                    <div style="font-size:30px; margin-bottom:0.4rem;">📋</div>
+                    <div style="font-weight:700; font-size:15px; margin-bottom:0.20rem; color:#111827;">
+                        ทะเบียนครุภัณฑ์ครบถ้วน
+                    </div>
+                    <div style="font-size:13px; color:#6b7280;">
+                        เก็บข้อมูลเครื่องมือแพทย์ทุกชิ้นอย่างเป็นระบบ เชื่อมกับ QR Code เพื่อค้นหาและตรวจสอบได้ทันที
+                    </div>
+                </div>
+
+                <div style="
+                    flex:1 1 260px;
+                    max-width:300px;
+                    background:#ffffff;
+                    border-radius:22px;
+                    padding:16px 18px;
+                    box-shadow:0 14px 30px rgba(15,23,42,0.06);
+                    border:1px solid #e5e7eb;
+                ">
+                    <div style="font-size:30px; margin-bottom:0.4rem;">🗓️</div>
+                    <div style="font-weight:700; font-size:15px; margin-bottom:0.20rem; color:#111827;">
+                        แผน PM & Calibration
+                    </div>
+                    <div style="font-size:13px; color:#6b7280;">
+                        วางแผนบำรุงรักษาเชิงป้องกัน และการสอบเทียบเครื่องมือสำคัญ เพื่อลดโอกาสเครื่องเสียขณะให้บริการ
+                    </div>
+                </div>
+
+                <div style="
+                    flex:1 1 260px;
+                    max-width:300px;
+                    background:#ffffff;
+                    border-radius:22px;
+                    padding:16px 18px;
+                    box-shadow:0 14px 30px rgba(15,23,42,0.06);
+                    border:1px solid #e5e7eb;
+                ">
+                    <div style="font-size:30px; margin-bottom:0.4rem;">🔧</div>
+                    <div style="font-weight:700; font-size:15px; margin-bottom:0.20rem; color:#111827;">
+                        แจ้งซ่อม & ติดตามสถานะ
+                    </div>
+                    <div style="font-size:13px; color:#6b7280;">
+                        บันทึกการแจ้งซ่อมทุกครั้ง พร้อมติดตามสถานะ ตั้งแต่รับงานจนซ่อมเสร็จ เก็บเป็นหลักฐานย้อนหลังได้
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # แถบ Step การทำงาน 3 ขั้นตอน
+    st.markdown(
+        """
+        <div style="max-width:900px; margin:0 auto 2.5rem;">
+            <div style="
+                background:#ffffff;
+                border-radius:24px;
+                padding:16px 20px 18px;
+                box-shadow:0 20px 40px rgba(15,23,42,0.06);
+                border:1px dashed #d4d4d8;
+            ">
+                <div style="font-size:14px; font-weight:600; color:#111827; margin-bottom:0.4rem;">
+                    เริ่มต้นใช้งานง่ายใน 3 ขั้นตอน
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:#4b5563;">
+                    <div style="flex:1 1 200px; display:flex; align-items:flex-start; gap:8px;">
+                        <div style="
+                            width:22px;
+                            height:22px;
+                            border-radius:999px;
+                            background:#2563eb;
+                            color:#ffffff;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            font-size:12px;
+                            font-weight:700;
+                            margin-top:1px;
+                        ">1</div>
+                        <div>
+                            <div style="font-weight:600;">นำเข้าข้อมูลครุภัณฑ์จาก Excel</div>
+                            <div>นำไฟล์ทะเบียนที่มีอยู่แล้วมาเชื่อมกับระบบ ไม่ต้องกรอกใหม่ทั้งหมด</div>
+                        </div>
+                    </div>
+                    <div style="flex:1 1 200px; display:flex; align-items:flex-start; gap:8px;">
+                        <div style="
+                            width:22px;
+                            height:22px;
+                            border-radius:999px;
+                            background:#22c55e;
+                            color:#ffffff;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            font-size:12px;
+                            font-weight:700;
+                            margin-top:1px;
+                        ">2</div>
+                        <div>
+                            <div style="font-weight:600;">สร้าง QR Code ติดที่เครื่องมือ</div>
+                            <div>สแกนแล้วเปิดรายละเอียดครุภัณฑ์ และประวัติการใช้งานได้ทันที</div>
+                        </div>
+                    </div>
+                    <div style="flex:1 1 200px; display:flex; align-items:flex-start; gap:8px;">
+                        <div style="
+                            width:22px;
+                            height:22px;
+                            border-radius:999px;
+                            background:#f97316;
+                            color:#ffffff;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            font-size:12px;
+                            font-weight:700;
+                            margin-top:1px;
+                        ">3</div>
+                        <div>
+                            <div style="font-weight:600;">ใช้แดชบอร์ดติดตามสถานะ Real-time</div>
+                            <div>เห็นภาพรวมพร้อมใช้งาน ชำรุด และประวัติแจ้งซ่อมได้ในหน้าจอเดียว</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if start or login_btn:
         st.session_state.view = "login"
@@ -1118,7 +1275,7 @@ def page_maintenance():
         return
 
     if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
+        st.warning("ไม่พบคอลัมน์ \'สถานะแจ้งซ่อม\' ในไฟล์ Excel")
         return
 
     maint_counts = (
