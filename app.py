@@ -17,8 +17,10 @@ st.set_page_config(
     layout="wide",
 )
 
+# คอลัมน์รหัสครุภัณฑ์ที่ใช้ร่วมกับหน้า QR
 ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 
+# โฟลเดอร์รูปและ QR
 IMAGE_DIR = Path("asset_images")
 QR_IMAGES_DIR = Path("qr_images")
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,9 +33,168 @@ MAINT_STATUS_CHOICES = [
     "ปลดระวาง / รอจำหน่าย",
 ]
 
-# =========================
-# STYLE: LOGIN PAGE
-# =========================
+# -------------------------------------------------
+#  STYLE: LANDING PAGE
+# -------------------------------------------------
+def set_landing_style():
+    st.markdown(
+        """
+        <style>
+        [data-testid="stAppViewContainer"]{
+            background: radial-gradient(circle at top left,#e0f2fe,#eef2ff 40%,#f9fafb 100%);
+        }
+        [data-testid="stHeader"]{
+            background: transparent;
+        }
+        .landing-wrapper{
+            max-width: 980px;
+            margin: 3.5rem auto 2.5rem auto;
+            text-align: center;
+        }
+        .landing-badge{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.22rem 0.9rem;
+            border-radius: 999px;
+            background: rgba(15,23,42,0.04);
+            border: 1px solid rgba(148,163,184,0.7);
+            font-size: 12px;
+            color: #4b5563;
+            margin-bottom: 0.7rem;
+        }
+        .landing-title{
+            font-size: 34px;
+            font-weight: 800;
+            color: #111827;
+            line-height: 1.2;
+            margin-bottom: 0.7rem;
+        }
+        .landing-title span{
+            color: #2563eb;
+            text-shadow: 0 0 14px rgba(37,99,235,0.25);
+        }
+        .landing-subtitle{
+            font-size: 13px;
+            color: #6b7280;
+            max-width: 700px;
+            margin: 0 auto 1.7rem auto;
+        }
+        .landing-note{
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 0.5rem;
+        }
+        .landing-section{
+            max-width: 900px;
+            margin: 0 auto 2.8rem auto;
+            text-align: center;
+        }
+        .landing-section-title{
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 0.25rem;
+        }
+        .landing-section-subtitle{
+            font-size: 12px;
+            color: #6b7280;
+            max-width: 620px;
+            margin: 0 auto 1.4rem auto;
+        }
+
+        /* การ์ดคุณสมบัติเด่น (อันบน) */
+        .landing-feature-highlight{
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1.8rem;
+        }
+        .landing-feature-highlight-card{
+            background:#ffffff;
+            border-radius:20px;
+            padding:16px 18px;
+            max-width:350px;
+            display:flex;
+            align-items:flex-start;
+            gap:12px;
+            box-shadow:0 18px 40px rgba(15,23,42,0.08);
+            border:1px solid rgba(209,213,219,0.9);
+        }
+        .landing-feature-icon{
+            width:38px;
+            height:38px;
+            border-radius:14px;
+            background:#eff6ff;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:22px;
+            color:#2563eb;
+            flex-shrink:0;
+        }
+        .landing-feature-text-title{
+            font-size:13px;
+            font-weight:700;
+            color:#111827;
+            margin-bottom:0.2rem;
+        }
+        .landing-feature-text-body{
+            font-size:11px;
+            color:#6b7280;
+        }
+
+        /* การ์ด 3 ขั้นตอนล่าง */
+        .landing-steps-wrapper{
+            display:flex;
+            flex-wrap:wrap;
+            gap:12px;
+            justify-content:center;
+        }
+        .landing-step-card{
+            flex:1 1 240px;
+            max-width:280px;
+            background:#ffffff;
+            border-radius:18px;
+            padding:10px 14px;
+            display:flex;
+            gap:10px;
+            align-items:flex-start;
+            box-shadow:0 12px 30px rgba(15,23,42,0.06);
+            border:1px solid rgba(226,232,240,0.9);
+        }
+        .landing-step-number{
+            width:26px;
+            height:26px;
+            border-radius:999px;
+            background:#2563eb;
+            color:#ffffff;
+            font-size:13px;
+            font-weight:700;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            margin-top:3px;
+            flex-shrink:0;
+        }
+        .landing-step-content-title{
+            font-size:12px;
+            font-weight:600;
+            color:#111827;
+            margin-bottom:0.15rem;
+        }
+        .landing-step-content-body{
+            font-size:11px;
+            color:#6b7280;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# -------------------------------------------------
+#  STYLE: LOGIN PAGE
+# -------------------------------------------------
 def set_login_style():
     st.markdown(
         """
@@ -107,19 +268,15 @@ def set_login_style():
         .mem-login-btn button:hover{
             background: #000000;
         }
-
-        .mem-login-back button{
-            border-radius: 999px;
-            height: 2.5rem;
-        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-# =========================
-# STYLE: MAIN APP
-# =========================
+
+# -------------------------------------------------
+#  STYLE: MAIN APP
+# -------------------------------------------------
 def set_main_style():
     st.markdown(
         """
@@ -139,6 +296,7 @@ def set_main_style():
             box-shadow: none;
         }
 
+        /* SIDEBAR */
         [data-testid="stSidebar"]{
             background: #1F2430;
         }
@@ -202,6 +360,7 @@ def set_main_style():
             margin-bottom: 1.5rem;
         }
 
+        /* HERO CARD – โทนขาวฟ้า */
         .mem-hero{
             background: linear-gradient(135deg,#eef2ff,#e0f2fe);
             border-radius: 26px;
@@ -326,7 +485,7 @@ def set_main_style():
     )
 
 # =========================
-# Excel helpers
+# UTIL: Excel helpers
 # =========================
 def get_available_excel_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -367,6 +526,7 @@ def load_equipment_data() -> pd.DataFrame:
         df = pd.read_excel(path)
         df = df.dropna(how="all").reset_index(drop=True)
 
+        # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกับหน้า QR
         if "สถานะแจ้งซ่อม" not in df.columns:
             df["สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
         if "รูปภาพครุภัณฑ์" not in df.columns:
@@ -391,13 +551,15 @@ def save_equipment_data(df: pd.DataFrame):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
 
+
 # =========================
-# รูป / QR helper
+# Helper: รูป / QR
 # =========================
 def get_image_path_from_row(row: pd.Series) -> Path | None:
     val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
     if not val:
         return None
+
     p = Path(val)
     if not p.is_absolute():
         p = IMAGE_DIR / p.name
@@ -437,170 +599,124 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
+
 # =========================
-# Landing Page (ใหม่)
+# หน้า Landing
 # =========================
 def landing_page():
-    set_main_style()
+    set_landing_style()
 
-    # HERO
     st.markdown(
         """
-        <div style="
-            text-align:center;
-            padding: 3.5rem 1rem 2.3rem;
-            background: radial-gradient(circle at top,#e0f2fe,#eef2ff,#ffffff);
-            border-radius: 0 0 40px 40px;
-            margin: -1.5rem -3rem 2.5rem -3rem;
-            box-shadow: 0 18px 40px rgba(15,23,42,0.08);
-        ">
-            <div style="font-size:14px; color:#4b5563; margin-bottom:0.3rem;">
+        <div class="landing-wrapper">
+            <div class="landing-badge">
                 ระบบบริหารจัดการเครื่องมือแพทย์ & ห้องปฏิบัติการ
             </div>
-            <div style="font-size:36px; font-weight:800; color:#111827; line-height:1.25;">
-                บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและปลอดภัย
-                <span style="color:#2563eb;">แบบ Real-time</span>
-            </div>
-            <div style="max-width:720px; margin:0.9rem auto 0; font-size:14px; color:#6b7280;">
+            <h1 class="landing-title">
+                บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและ<br/>
+                ปลอดภัย แบบ <span>Real-time</span>
+            </h1>
+            <p class="landing-subtitle">
                 จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม
                 และข้อมูลห้องปฏิบัติการ ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ปุ่มเริ่มใช้งาน / เข้าสู่ระบบ
+    col_center = st.container()
+    with col_center:
+        start_clicked = st.button("เริ่มใช้งานระบบ", type="primary", use_container_width=False)
+        login_clicked = st.button("เข้าสู่ระบบ", use_container_width=False)
+
+        st.markdown(
+            '<div class="landing-note">สำหรับเจ้าหน้าที่ที่ได้รับสิทธิ์ใช้งานห้องปฏิบัติการเท่านั้น</div>',
+            unsafe_allow_html=True,
+        )
+
+    if start_clicked:
+        # เข้าแบบ guest
+        st.session_state.logged_in = True
+        st.session_state.username = "guest"
+        st.session_state.display_name = "System Admin"
+        st.session_state.app_mode = "main"
+        st.rerun()
+
+    if login_clicked:
+        st.session_state.app_mode = "login"
+        st.rerun()
+
+    # --------  ส่วนคุณสมบัติเด่น  --------
+    st.markdown(
+        """
+        <div class="landing-section">
+            <div class="landing-section-title">คุณสมบัติเด่นที่รองรับระบบ</div>
+            <div class="landing-section-subtitle">
+                ออกแบบมาเพื่อหน่วยงานด้านสาธารณสุข ใช้งานง่ายทั้งแพทย์ พยาบาล และทีมช่างเทคนิค
+                รองรับการทำงานทั้งด้านทะเบียนครุภัณฑ์ งาน PM และการติดตามแจ้งซ่อม
+            </div>
+
+            <div class="landing-feature-highlight">
+                <div class="landing-feature-highlight-card">
+                    <div class="landing-feature-icon">📋</div>
+                    <div>
+                        <div class="landing-feature-text-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
+                        <div class="landing-feature-text-body">
+                            บันทึกรายละเอียดเครื่องมือแพทย์ครบถ้วน ตั้งแต่เลขครุภัณฑ์ รุ่น
+                            Serial Number อายุการใช้งาน ต้นทุนต่อหน่วย ไปจนถึงข้อมูลการทดสอบสอบเทียบ
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="font-size:12px; color:#6b7280; margin-bottom:0.8rem;">
+                เริ่มใช้งานง่ายใน 3 ขั้นตอน
+            </div>
+
+            <div class="landing-steps-wrapper">
+                <div class="landing-step-card">
+                    <div class="landing-step-number">1</div>
+                    <div>
+                        <div class="landing-step-content-title">นำเข้าข้อมูลจากไฟล์ Excel</div>
+                        <div class="landing-step-content-body">
+                            ใช้ไฟล์ทะเบียนครุภัณฑ์เดิมของโรงพยาบาลนำเข้าได้ทันที ไม่ต้องคีย์ใหม่
+                            รองรับการอัปเดตข้อมูลในอนาคต
+                        </div>
+                    </div>
+                </div>
+
+                <div class="landing-step-card">
+                    <div class="landing-step-number">2</div>
+                    <div>
+                        <div class="landing-step-content-title">ติด QR Code ให้เครื่องมือแต่ละตัว</div>
+                        <div class="landing-step-content-body">
+                            สแกนแล้วเข้าหน้าข้อมูลครุภัณฑ์ได้เลย
+                            แก้ไขสถานะการใช้งาน แจ้งซ่อม และแนบรูปภาพได้จากมือถือ / แท็บเล็ต
+                        </div>
+                    </div>
+                </div>
+
+                <div class="landing-step-card">
+                    <div class="landing-step-number">3</div>
+                    <div>
+                        <div class="landing-step-content-title">ดูภาพรวมสถานะ แบบ Real-time</div>
+                        <div class="landing-step-content-body">
+                            Dashboard แสดงจำนวนเครื่องมือพร้อมใช้ ชำรุด รอซ่อม และปลดระวาง
+                            ช่วยเตรียมข้อมูลสำหรับการตรวจประเมินมาตรฐานทันที
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ปุ่ม
-    col_l, col_c, col_r = st.columns([1, 1, 1])
-    with col_c:
-        start = st.button("เริ่มใช้งานระบบ", type="primary", use_container_width=True)
-        login_btn = st.button("เข้าสู่ระบบ", use_container_width=True)
-        st.markdown(
-            """
-            <div style="text-align:center; font-size:11px; color:#9ca3af; margin-top:0.75rem;">
-                สำหรับเจ้าหน้าที่ที่ได้รับมอบสิทธิใช้งานจากหน่วยงานเท่านั้น
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # การ์ดคุณสมบัติหลัก 3 ใบ (เขียนใหม่ให้ปิดแท็กครบ ไม่หลุดออกมานอกสตริง)
-    feature_html = """
-    <div style="max-width:1000px; margin:2.5rem auto 2.0rem;">
-      <div style="text-align:center; font-size:18px; font-weight:700; color:#111827; margin-bottom:0.5rem;">
-        คุณสมบัติหลักของระบบ
-      </div>
-      <div style="text-align:center; font-size:13px; color:#6b7280; margin-bottom:1.3rem;">
-        ออกแบบมาเพื่อหน่วยงานสาธารณสุขและโรงพยาบาล ใช้งานง่าย ครบทั้งทะเบียนครุภัณฑ์ แผน PM และการติดตามแจ้งซ่อม
-      </div>
-      <div style="display:flex; flex-wrap:wrap; gap:16px; justify-content:center;">
-        <div style="
-          flex:1 1 260px; max-width:300px;
-          background:#ffffff; border-radius:22px;
-          padding:16px 18px;
-          box-shadow:0 14px 30px rgba(15,23,42,0.06);
-          border:1px solid #e5e7eb;">
-          <div style="font-size:30px; margin-bottom:0.4rem;">📋</div>
-          <div style="font-weight:700; font-size:15px; margin-bottom:0.20rem; color:#111827;">
-            ทะเบียนครุภัณฑ์ครบถ้วน
-          </div>
-          <div style="font-size:13px; color:#6b7280;">
-            เก็บข้อมูลเครื่องมือแพทย์ทุกชิ้นอย่างเป็นระบบ เชื่อมกับ QR Code เพื่อค้นหาและตรวจสอบได้ทันที
-          </div>
-        </div>
-
-        <div style="
-          flex:1 1 260px; max-width:300px;
-          background:#ffffff; border-radius:22px;
-          padding:16px 18px;
-          box-shadow:0 14px 30px rgba(15,23,42,0.06);
-          border:1px solid #e5e7eb;">
-          <div style="font-size:30px; margin-bottom:0.4rem;">🗓️</div>
-          <div style="font-weight:700; font-size:15px; margin-bottom:0.20rem; color:#111827;">
-            แผน PM & Calibration
-          </div>
-          <div style="font-size:13px; color:#6b7280;">
-            วางแผนบำรุงรักษาเชิงป้องกันและการสอบเทียบเครื่องมือสำคัญ ลดโอกาสที่เครื่องเสียระหว่างให้บริการ
-          </div>
-        </div>
-
-        <div style="
-          flex:1 1 260px; max-width:300px;
-          background:#ffffff; border-radius:22px;
-          padding:16px 18px;
-          box-shadow:0 14px 30px rgba(15,23,42,0.06);
-          border:1px solid #e5e7eb;">
-          <div style="font-size:30px; margin-bottom:0.4rem;">🔧</div>
-          <div style="font-weight:700; font-size:15px; margin-bottom:0.20rem; color:#111827;">
-            แจ้งซ่อม & ติดตามงานซ่อม
-          </div>
-          <div style="font-size:13px; color:#6b7280;">
-            มีบันทึกการแจ้งซ่อมทุกครั้ง พร้อมสถานะล่าสุด ตั้งแต่รับงานจนซ่อมเสร็จ เก็บเป็นหลักฐานย้อนหลังได้
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-    st.markdown(feature_html, unsafe_allow_html=True)
-
-    # แถบ Step 3 ขั้นตอน
-    steps_html = """
-    <div style="max-width:900px; margin:0 auto 2.5rem;">
-      <div style="
-        background:#ffffff;
-        border-radius:24px;
-        padding:16px 20px 18px;
-        box-shadow:0 20px 40px rgba(15,23,42,0.06);
-        border:1px dashed #d4d4d8;">
-        <div style="font-size:14px; font-weight:600; color:#111827; margin-bottom:0.4rem;">
-          เริ่มต้นใช้งานง่ายใน 3 ขั้นตอน
-        </div>
-        <div style="display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:#4b5563;">
-          <div style="flex:1 1 200px; display:flex; align-items:flex-start; gap:8px;">
-            <div style="
-              width:22px; height:22px; border-radius:999px;
-              background:#2563eb; color:#ffffff;
-              display:flex; align-items:center; justify-content:center;
-              font-size:12px; font-weight:700; margin-top:1px;">1</div>
-            <div>
-              <div style="font-weight:600;">นำเข้าข้อมูลครุภัณฑ์จาก Excel</div>
-              <div>ดึงทะเบียนที่มีอยู่แล้วมาใช้ ไม่ต้องกรอกใหม่ทั้งหมด</div>
-            </div>
-          </div>
-          <div style="flex:1 1 200px; display:flex; align-items:flex-start; gap:8px;">
-            <div style="
-              width:22px; height:22px; border-radius:999px;
-              background:#22c55e; color:#ffffff;
-              display:flex; align-items:center; justify-content:center;
-              font-size:12px; font-weight:700; margin-top:1px;">2</div>
-            <div>
-              <div style="font-weight:600;">สร้าง QR Code ติดที่เครื่องมือ</div>
-              <div>สแกนแล้วเปิดรายละเอียดครุภัณฑ์ และประวัติการใช้งานได้ทันที</div>
-            </div>
-          </div>
-          <div style="flex:1 1 200px; display:flex; align-items:flex-start; gap:8px;">
-            <div style="
-              width:22px; height:22px; border-radius:999px;
-              background:#f97316; color:#ffffff;
-              display:flex; align-items:center; justify-content:center;
-              font-size:12px; font-weight:700; margin-top:1px;">3</div>
-            <div>
-              <div style="font-weight:600;">ใช้แดชบอร์ดติดตามสถานะ Real-time</div>
-              <div>เห็นภาพรวมพร้อมใช้งาน ชำรุด และประวัติแจ้งซ่อมได้ในหน้าจอเดียว</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-    st.markdown(steps_html, unsafe_allow_html=True)
-
-    if start or login_btn:
-        st.session_state.view = "login"
-        st.rerun()
 
 # =========================
-# Login Page
+# หน้า Login
 # =========================
 def login_page():
     set_login_style()
@@ -616,9 +732,6 @@ def login_page():
 
     st.markdown('<div class="mem-login-btn">', unsafe_allow_html=True)
     login_clicked = st.button("เข้าสู่ระบบ", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown('<div class="mem-login-back">', unsafe_allow_html=True)
     back_clicked = st.button("⬅️ กลับไปหน้าแรก", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -628,8 +741,7 @@ def login_page():
     )
 
     if back_clicked:
-        st.session_state.logged_in = False
-        st.session_state.view = "landing"
+        st.session_state.app_mode = "landing"
         st.rerun()
 
     if login_clicked:
@@ -638,13 +750,14 @@ def login_page():
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.display_name = display_name
-            st.session_state.view = "app"
+            st.session_state.app_mode = "main"
             st.rerun()
         else:
-            st.error("username หรือ password ไม่ถูกต้อง")
+            st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
+
 
 # =========================
-# Altair style helper
+# Helper: ใส่สไตล์ใน Altair chart
 # =========================
 def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
     return (
@@ -656,7 +769,10 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
         )
     )
 
-# ============= หน้า "หน้าหลัก" + Dashboard =============
+
+# =========================
+# หน้า "หน้าหลัก" + Dashboard
+# =========================
 def page_home():
     set_main_style()
 
@@ -682,6 +798,7 @@ def page_home():
         st.warning("ไม่พบคอลัมน์ 'สถานะ' ในไฟล์ Excel")
         return
 
+    # --------- เตรียมข้อมูลสถานะ ---------
     status_counts = (
         df[status_col]
         .fillna("ไม่ทราบสถานะ")
@@ -719,6 +836,7 @@ def page_home():
         range=[color_map[k] for k in color_map.keys()],
     )
 
+    # --------- ข้อมูลตามสถานที่ใช้งาน ---------
     loc_col = "สถานที่ใช้งาน (ปัจจุบัน)"
     loc_total = 0
     top_loc_name = "ไม่พบข้อมูล"
@@ -737,6 +855,7 @@ def page_home():
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
+    # --------- SUMMARY ตัวเลข (Hero Card) ---------
     def get_count(label: str) -> int:
         try:
             return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
@@ -822,6 +941,7 @@ def page_home():
     )
     st.markdown(hero_html, unsafe_allow_html=True)
 
+    # --------- PIE CHART (Donut) + ตาราง ---------
     base_pie = (
         alt.Chart(status_counts)
         .encode(
@@ -884,6 +1004,7 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # --------- HERO CARD ที่ 2: แสดง Top สถานที่ ---------
     if not loc_counts.empty:
         metric_parts = []
         for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
@@ -909,8 +1030,9 @@ def page_home():
         )
         st.markdown(loc_hero_html, unsafe_allow_html=True)
 
+
 # =========================
-# ตาราง + เลือกแถว
+# Helper: ตาราง + เลือกแถว (สำหรับลบ)
 # =========================
 def equipment_table_with_selection(df: pd.DataFrame):
     df_with_sel = df.copy()
@@ -933,6 +1055,7 @@ def equipment_table_with_selection(df: pd.DataFrame):
 
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
+
 
 # =========================
 # หน้า "รายการครุภัณฑ์"
@@ -1002,6 +1125,7 @@ def page_equipment_list():
     st.markdown("### ตารางรายการครุภัณฑ์")
     equipment_table_with_selection(df)
 
+    # ---------- ปุ่มลบข้อมูล ----------
     st.markdown("#### จัดการลบข้อมูล")
     col_del1, col_del2 = st.columns([1, 1.2])
 
@@ -1031,6 +1155,7 @@ def page_equipment_list():
                 st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
                 st.rerun()
 
+    # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
         name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
@@ -1066,6 +1191,7 @@ def page_equipment_list():
     row = df.iloc[selected_idx].copy()
     asset_code = str(row.get(ASSET_CODE_COL, ""))
 
+    # ---- ฟิลด์หลัก ----
     columns_list = [
         c
         for c in df.columns
@@ -1099,6 +1225,7 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
+    # ---- ส่วนสถานะแจ้งซ่อม ----
     st.markdown("### สถานะแจ้งซ่อม")
     current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
     if current_maint not in MAINT_STATUS_CHOICES:
@@ -1112,6 +1239,7 @@ def page_equipment_list():
     )
     updated_values["สถานะแจ้งซ่อม"] = maint_select
 
+    # ---- ส่วน QR + รูปภาพ ----
     st.markdown("### QR Code และรูปภาพครุภัณฑ์")
     qr_col, img_col = st.columns([1, 1])
 
@@ -1130,7 +1258,9 @@ def page_equipment_list():
             st.image(qr_bytes_for_download, use_column_width=True)
 
         st.caption(asset_code)
-        st.write("สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน")
+        st.write(
+            "สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน"
+        )
 
         if qr_bytes_for_download:
             st.download_button(
@@ -1162,6 +1292,7 @@ def page_equipment_list():
             st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
             return
 
+        # อัปเดตค่าฟิลด์ทั้งหมดตาม updated_values
         for col in updated_values:
             if col not in df_current.columns:
                 continue
@@ -1179,6 +1310,7 @@ def page_equipment_list():
             else:
                 df_current.at[selected_idx, col] = raw_val
 
+        # ถ้าอัปโหลดรูปใหม่ -> เซฟและเก็บชื่อไฟล์ในคอลัมน์ "รูปภาพครุภัณฑ์"
         if uploaded_img is not None:
             filename = save_uploaded_image(uploaded_img, asset_code)
             if "รูปภาพครุภัณฑ์" not in df_current.columns:
@@ -1187,6 +1319,7 @@ def page_equipment_list():
 
         save_equipment_data(df_current)
         st.rerun()
+
 
 # =========================
 # หน้า "แจ้งซ่อม / บำรุงรักษา"
@@ -1204,7 +1337,7 @@ def page_maintenance():
         return
 
     if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ \'สถานะแจ้งซ่อม\' ในไฟล์ Excel")
+        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
         return
 
     maint_counts = (
@@ -1246,6 +1379,7 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+
 # =========================
 # หน้า "รายงานสรุป"
 # =========================
@@ -1256,6 +1390,7 @@ def page_summary():
         unsafe_allow_html=True,
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
+
 
 # =========================
 # MAIN APP หลัง Login
@@ -1302,7 +1437,9 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            st.session_state.clear()
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.session_state.app_mode = "landing"
             st.rerun()
 
     menu = st.session_state.get("current_menu", "หน้าหลัก")
@@ -1316,23 +1453,28 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
+
 # =========================
 # ENTRY POINT
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-if "view" not in st.session_state:
-    st.session_state.view = "landing"
 if "current_menu" not in st.session_state:
     st.session_state.current_menu = "หน้าหลัก"
 if "selected_row_idx" not in st.session_state:
     st.session_state.selected_row_idx = 0
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = "landing"
 
-if not st.session_state.logged_in:
-    if st.session_state.view == "landing":
-        landing_page()
-    else:
+mode = st.session_state.app_mode
+
+if mode == "landing":
+    landing_page()
+elif mode == "login":
+    login_page()
+else:  # "main"
+    if not st.session_state.logged_in:
+        st.session_state.app_mode = "login"
         login_page()
-else:
-    st.session_state.view = "app"
-    main_app()
+    else:
+        main_app()
