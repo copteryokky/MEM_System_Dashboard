@@ -1,6 +1,6 @@
+import streamlit as st
 import pandas as pd
 import altair as alt
-import streamlit as st
 from pathlib import Path
 from io import BytesIO
 import qrcode
@@ -12,7 +12,7 @@ from auth import authenticate_user
 # CONFIG พื้นฐาน
 # =========================
 st.set_page_config(
-    page_title="MEM System",
+    page_title="MedEquip Pro Lab – Medical Equipment Management",
     page_icon="🩺",
     layout="wide",
 )
@@ -20,7 +20,7 @@ st.set_page_config(
 # คอลัมน์รหัสครุภัณฑ์ที่ใช้ร่วมกับหน้า QR
 ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 
-# โฟลเดอร์รูปและ QR
+# โฟลเดอร์รูปและ QR (ใช้ร่วมกันทั้ง Dashboard + QR View)
 IMAGE_DIR = Path("asset_images")
 QR_IMAGES_DIR = Path("qr_images")
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -33,168 +33,11 @@ MAINT_STATUS_CHOICES = [
     "ปลดระวาง / รอจำหน่าย",
 ]
 
-# =========================
-# STYLE: LANDING PAGE
-# =========================
-def set_landing_style():
-    st.markdown(
-        """
-<style>
-[data-testid="stAppViewContainer"]{
-    background: radial-gradient(circle at top left, #e0f2fe 0, #f9fafb 42%, #e0f2fe 100%);
-}
-[data-testid="stHeader"]{
-    background: transparent;
-}
-.block-container{
-    max-width: 980px !important;
-    padding-top: 3.5rem !important;
-    padding-bottom: 3rem !important;
-}
+# ชื่อ page state
+PAGE_LANDING = "landing"
+PAGE_LOGIN = "login"
+PAGE_MAIN = "main"
 
-.landing-wrapper{
-    text-align: center;
-    margin-bottom: 1.5rem;
-}
-.landing-badge{
-    display: inline-flex;
-    padding: 4px 14px;
-    border-radius: 999px;
-    font-size: 12px;
-    background: rgba(239,246,255,0.9);
-    border: 1px solid #bfdbfe;
-    color: #1e3a8a;
-    margin-bottom: 0.6rem;
-}
-.landing-title{
-    font-size: 30px;
-    line-height: 1.3;
-    font-weight: 800;
-    color: #0f172a;
-    margin-bottom: 0.6rem;
-}
-.landing-title span{
-    color: #2563eb;
-}
-.landing-subtitle{
-    font-size: 13px;
-    color: #6b7280;
-    max-width: 720px;
-    margin: 0 auto 1.6rem auto;
-}
-
-/* ปุ่ม */
-.landing-note{
-    font-size: 11px;
-    color: #9ca3af;
-    text-align: center;
-    margin-top: 0.4rem;
-}
-
-/* ส่วนคุณสมบัติเด่น */
-.landing-section{
-    margin-top: 2.5rem;
-    margin-bottom: 2rem;
-    background: #ffffff;
-    border-radius: 26px;
-    padding: 20px 22px 24px 22px;
-    box-shadow: 0 22px 50px rgba(15,23,42,0.12);
-    border: 1px solid #e5e7eb;
-}
-.landing-section-title{
-    font-size: 18px;
-    font-weight: 700;
-    text-align: center;
-    color: #0f172a;
-    margin-bottom: 0.25rem;
-}
-.landing-section-subtitle{
-    font-size: 12px;
-    color: #6b7280;
-    text-align: center;
-    max-width: 760px;
-    margin: 0 auto 1.2rem auto;
-}
-
-/* การ์ดคุณสมบัติหลัก */
-.landing-feature-highlight{
-    display: flex;
-    justify-content: center;
-    margin-bottom: 1.3rem;
-}
-.landing-feature-highlight-card{
-    max-width: 520px;
-    display: flex;
-    gap: 12px;
-    padding: 14px 16px;
-    border-radius: 18px;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 10px 20px rgba(15,23,42,0.06);
-}
-.landing-feature-icon{
-    width: 40px;
-    height: 40px;
-    border-radius: 999px;
-    background: #eff6ff;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size: 20px;
-}
-.landing-feature-text-title{
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 2px;
-    color: #111827;
-}
-.landing-feature-text-body{
-    font-size: 12px;
-    color: #6b7280;
-}
-
-/* การ์ด 3 กลุ่มผู้ใช้งาน */
-.landing-steps-wrapper{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-    justify-content:center;
-}
-.landing-step-card{
-    flex:1 1 260px;
-    max-width:300px;
-    background:#ffffff;
-    border-radius:18px;
-    padding:11px 13px;
-    border:1px solid #e5e7eb;
-    box-shadow:0 10px 22px rgba(15,23,42,0.08);
-}
-.landing-step-number{
-    width:26px;
-    height:26px;
-    border-radius:999px;
-    background:#2563eb;
-    color:#ffffff;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:14px;
-    margin-bottom:6px;
-}
-.landing-step-content-title{
-    font-size:13px;
-    font-weight:600;
-    color:#111827;
-    margin-bottom:2px;
-}
-.landing-step-content-body{
-    font-size:12px;
-    color:#6b7280;
-}
-</style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 # =========================
 # STYLE: LOGIN PAGE
@@ -202,77 +45,81 @@ def set_landing_style():
 def set_login_style():
     st.markdown(
         """
-<style>
-[data-testid="stAppViewContainer"]{
-    background: #3B4251;
-}
-[data-testid="stHeader"]{
-    background: transparent;
-}
+        <style>
+        [data-testid="stAppViewContainer"]{
+            background: #1f2937;
+        }
+        [data-testid="stHeader"]{
+            background: transparent;
+        }
 
-.block-container{
-    max-width: 460px !important;
-    padding-top: 3rem !important;
-    padding-bottom: 3rem !important;
-    margin: 4rem auto 3rem auto;
-    background: #FFFFFF;
-    border-radius: 28px;
-    box-shadow: 0 28px 60px rgba(0,0,0,0.55);
-}
+        .block-container{
+            max-width: 460px !important;
+            padding-top: 3rem !important;
+            padding-bottom: 3rem !important;
+            margin: 4rem auto 3rem auto;
+            background: #FFFFFF;
+            border-radius: 28px;
+            box-shadow: 0 28px 60px rgba(0,0,0,0.55);
+        }
 
-.mem-login-title{
-    text-align: center;
-    font-size: 26px;
-    font-weight: 600;
-    margin-bottom: 0.4rem;
-    color: #111827;
-}
-.mem-login-sub{
-    text-align: center;
-    font-size: 12px;
-    color: #6B7280;
-    margin-bottom: 1.6rem;
-}
-.mem-login-footer{
-    text-align:center;
-    font-size: 12px;
-    color: #9CA3AF;
-    margin-top: 1rem;
-}
+        .mem-login-title{
+            text-align: center;
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            color: #111827;
+        }
+        .mem-login-sub{
+            text-align: center;
+            font-size: 12px;
+            color: #6B7280;
+            margin-bottom: 1.6rem;
+        }
+        .mem-login-footer{
+            text-align:center;
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-top: 1rem;
+        }
 
-.stTextInput > label{
-    font-size: 13px;
-    color: #4B5563;
-}
-.stTextInput > div > div{
-    border-radius: 999px;
-    border: 1px solid #E5E7EB;
-    background: #F9FAFB;
-    padding: 0 0.75rem;
-    box-shadow: inset 0 1px 2px rgba(15,23,42,0.06);
-}
-.stTextInput > div > div > input{
-    border-radius: 999px;
-    border: none;
-    background: transparent;
-    outline: none;
-    color: #111827;
-}
-.mem-login-btn button{
-    background: #020617;
-    color: #FFFFFF;
-    border-radius: 999px;
-    height: 2.7rem;
-    border: none;
-    font-weight: 500;
-}
-.mem-login-btn button:hover{
-    background: #000000;
-}
-</style>
+        .stTextInput > label{
+            font-size: 13px;
+            color: #4B5563;
+        }
+
+        .stTextInput > div > div{
+            border-radius: 999px;
+            border: 1px solid #E5E7EB;
+            background: #F9FAFB;
+            padding: 0 0.75rem;
+            box-shadow: inset 0 1px 2px rgba(15,23,42,0.06);
+        }
+
+        .stTextInput > div > div > input{
+            border-radius: 999px;
+            border: none;
+            background: transparent;
+            outline: none;
+            color: #111827;
+        }
+
+        .mem-login-btn button{
+            background: #2563eb;
+            color: #FFFFFF;
+            border-radius: 999px;
+            height: 2.7rem;
+            border: none;
+            font-weight: 500;
+        }
+        .mem-login-btn button:hover{
+            background: #1d4ed8;
+        }
+        </style>
         """,
         unsafe_allow_html=True,
     )
+
 
 # =========================
 # STYLE: MAIN APP
@@ -280,208 +127,333 @@ def set_login_style():
 def set_main_style():
     st.markdown(
         """
-<style>
-[data-testid="stAppViewContainer"]{
-    background: #F3F4F6;
-}
-[data-testid="stHeader"]{
-    background: #FFFFFF;
-}
-.block-container{
-    max-width: 1200px !important;
-    padding-top: 2.0rem !important;
-    padding-bottom: 1.5rem !important;
-    margin: 0 auto;
-    background: transparent;
-    box-shadow: none;
-}
+        <style>
+        [data-testid="stAppViewContainer"]{
+            background: #F3F4F6;
+        }
+        [data-testid="stHeader"]{
+            background: #FFFFFF;
+        }
+        .block-container{
+            max-width: 1200px !important;
+            padding-top: 2.0rem !important;
+            padding-bottom: 1.5rem !important;
+            margin: 0 auto;
+            background: transparent;
+            box-shadow: none;
+        }
 
-/* SIDEBAR */
-[data-testid="stSidebar"]{
-    background: #1F2430;
-}
-[data-testid="stSidebar"] > div{
-    padding-top: 1.1rem;
-    padding-bottom: 1.1rem;
-}
-.mem-sidebar-user{
-    background: #0F172A;
-    border-radius: 20px;
-    padding: 14px 16px;
-    color: #E5E7EB;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-    margin-bottom: 12px;
-}
-.mem-sidebar-user-name{
-    font-weight: 700;
-    font-size: 16px;
-    color: #F9FAFB;
-}
-.mem-sidebar-user-sub{
-    font-size: 12px;
-    color: #9CA3AF;
-}
-.mem-menu-title{
-    font-size: 13px;
-    font-weight: 600;
-    color: #F9FAFB;
-    margin-bottom: 6px;
-}
-.mem-menu-btn,
-.mem-menu-btn-active{
-    width: 100%;
-    margin-bottom: 2px;
-}
-.mem-menu-btn button,
-.mem-menu-btn-active button{
-    width: 100%;
-    text-align: left;
-    border-radius: 999px;
-    min-height: 2.0rem;
-    font-size: 13px;
-    padding-top: 0.15rem;
-    padding-bottom: 0.15rem;
-}
-.mem-menu-btn-active button{
-    background: #F97316 !important;
-    color: #111827 !important;
-    font-weight: 700;
-}
+        /* SIDEBAR */
+        [data-testid="stSidebar"]{
+            background: #1F2430;
+        }
+        [data-testid="stSidebar"] > div{
+            padding-top: 1.1rem;
+            padding-bottom: 1.1rem;
+        }
+        .mem-sidebar-user{
+            background: #0F172A;
+            border-radius: 20px;
+            padding: 14px 16px;
+            color: #E5E7EB;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            margin-bottom: 12px;
+        }
+        .mem-sidebar-user-name{
+            font-weight: 700;
+            font-size: 16px;
+            color: #F9FAFB;
+        }
+        .mem-sidebar-user-sub{
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+        .mem-menu-title{
+            font-size: 13px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 6px;
+        }
+        .mem-menu-btn,
+        .mem-menu-btn-active{
+            width: 100%;
+            margin-bottom: 2px;
+        }
+        .mem-menu-btn button,
+        .mem-menu-btn-active button{
+            width: 100%;
+            text-align: left;
+            border-radius: 999px;
+            min-height: 2.0rem;
+            font-size: 13px;
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+        }
+        .mem-menu-btn-active button{
+            background: #F97316 !important;
+            color: #111827 !important;
+            font-weight: 700;
+        }
 
-.mem-page-title{
-    font-size: 30px;
-    font-weight: 800;
-    color: #111827;
-    margin-bottom: 0.5rem;
-}
-.mem-page-subtitle{
-    font-size: 13px;
-    color: #6B7280;
-    margin-bottom: 1.5rem;
-}
+        .mem-page-title{
+            font-size: 30px;
+            font-weight: 800;
+            color: #111827;
+            margin-bottom: 0.5rem;
+        }
+        .mem-page-subtitle{
+            font-size: 13px;
+            color: #6B7280;
+            margin-bottom: 1.5rem;
+        }
 
-/* HERO CARD – โทนขาวฟ้า */
-.mem-hero{
-    background: linear-gradient(135deg,#eef2ff,#e0f2fe);
-    border-radius: 26px;
-    padding: 18px 26px 16px 26px;
-    color: #0f172a;
-    box-shadow: 0 18px 40px rgba(15,23,42,0.18);
-    margin-bottom: 22px;
-    border: 1px solid #dbeafe;
-}
-.mem-hero-title{
-    font-size: 20px;
-    font-weight: 700;
-    margin-bottom: 4px;
-}
-.mem-hero-sub{
-    font-size: 13px;
-    opacity: 0.92;
-    margin-bottom: 14px;
-}
-.mem-hero-metrics{
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-.mem-hero-metric{
-    background: #ffffff;
-    border-radius: 18px;
-    padding: 8px 12px;
-    min-width: 165px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    box-shadow: 0 4px 10px rgba(15,23,42,0.05);
-    border: 1px solid #e5e7eb;
-}
-.mem-hero-metric-label{
-    font-size: 11px;
-    color: #6b7280;
-}
-.mem-hero-metric-value{
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 1.1;
-    color: #111827;
-}
-.mem-hero-metric-pill{
-    margin-top: 4px;
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 10px;
-    background: #eff6ff;
-    color: #1d4ed8;
-}
+        /* HERO CARD – โทนขาวฟ้า */
+        .mem-hero{
+            background: linear-gradient(135deg,#eef2ff,#e0f2fe);
+            border-radius: 26px;
+            padding: 18px 26px 16px 26px;
+            color: #0f172a;
+            box-shadow: 0 18px 40px rgba(15,23,42,0.18);
+            margin-bottom: 22px;
+            border: 1px solid #dbeafe;
+        }
+        .mem-hero-title{
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .mem-hero-sub{
+            font-size: 13px;
+            opacity: 0.92;
+            margin-bottom: 14px;
+        }
+        .mem-hero-metrics{
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .mem-hero-metric{
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 8px 12px;
+            min-width: 165px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(15,23,42,0.05);
+            border: 1px solid #e5e7eb;
+        }
+        .mem-hero-metric-label{
+            font-size: 11px;
+            color: #6b7280;
+        }
+        .mem-hero-metric-value{
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #111827;
+        }
+        .mem-hero-metric-pill{
+            margin-top: 4px;
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
 
-.mem-status-legend-wrapper{
-    margin-top: 10px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-}
-.mem-status-legend{
-    display: inline-flex;
-    flex-wrap: nowrap;
-    gap: 8px;
-    font-size: 11px;
-    white-space: nowrap;
-}
-.mem-status-legend-item{
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 2px 6px rgba(15,23,42,0.04);
-}
-.mem-status-dot{
-    width: 10px;
-    height: 10px;
-    border-radius: 999px;
-}
+        .mem-status-legend-wrapper{
+            margin-top: 10px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .mem-status-legend{
+            display: inline-flex;
+            flex-wrap: nowrap;
+            gap: 8px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .mem-status-legend-item{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 2px 6px rgba(15,23,42,0.04);
+        }
+        .mem-status-dot{
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+        }
 
-.mem-card{
-    background: #FFFFFF;
-    border-radius: 32px;
-    padding: 20px 24px 24px 24px;
-    margin-bottom: 26px;
-    box-shadow: 0 22px 52px rgba(15,23,42,0.08);
-    border: 2px solid rgba(148,163,184,0.45);
-    position: relative;
-    overflow: hidden;
-}
-.mem-card::before{
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    height: 5px;
-    border-radius: 30px 30px 0 0;
-    background: linear-gradient(90deg,#22c55e,#0ea5e9,#6366f1);
-}
-.mem-card-title{
-    font-size: 18px;
-    font-weight: 700;
-    color: #111827;
-    margin-bottom: 0.6rem;
-}
-.mem-card-subtitle{
-    font-size: 12px;
-    color: #9CA3AF;
-    margin-bottom: 0.6rem;
-}
-.mem-status-table table{
-    font-size: 13px;
-}
-</style>
+        .mem-card{
+            background: #FFFFFF;
+            border-radius: 32px;
+            padding: 20px 24px 24px 24px;
+            margin-bottom: 26px;
+            box-shadow: 0 22px 52px rgba(15,23,42,0.08);
+            border: 2px solid rgba(148,163,184,0.45);
+            position: relative;
+            overflow: hidden;
+        }
+        .mem-card::before{
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 5px;
+            border-radius: 30px 30px 0 0;
+            background: linear-gradient(90deg,#22c55e,#0ea5e9,#6366f1);
+        }
+        .mem-card-title{
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 0.6rem;
+        }
+        .mem-card-subtitle{
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 0.6rem;
+        }
+
+        .mem-status-table table{
+            font-size: 13px;
+        }
+        </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+# =========================
+# STYLE: LANDING PAGE
+# =========================
+def set_landing_style():
+    st.markdown(
+        """
+        <style>
+        [data-testid="stAppViewContainer"]{
+            background: radial-gradient(circle at top,#e0f2fe 0,#eff6ff 50%,#f9fafb 100%);
+        }
+        [data-testid="stHeader"]{
+            background: transparent;
+        }
+        .block-container{
+            max-width: 900px !important;
+            padding-top: 3.0rem !important;
+            padding-bottom: 3rem !important;
+            margin: 0 auto;
+        }
+
+        .landing-badge{
+            display:inline-block;
+            padding:4px 14px;
+            border-radius:999px;
+            background:rgba(59,130,246,0.08);
+            color:#1d4ed8;
+            font-size:12px;
+            margin-bottom:10px;
+        }
+        .landing-title{
+            font-size:32px;
+            font-weight:800;
+            text-align:center;
+            color:#020617;
+            margin-bottom:8px;
+        }
+        .landing-subtitle{
+            text-align:center;
+            font-size:14px;
+            color:#6b7280;
+            max-width:640px;
+            margin:0 auto 24px auto;
+        }
+        .landing-buttons{
+            display:flex;
+            justify-content:center;
+            gap:12px;
+            margin-bottom:6px;
+        }
+        .landing-caption{
+            text-align:center;
+            font-size:11px;
+            color:#9ca3af;
+            margin-bottom:24px;
+        }
+
+        .landing-feature-section{
+            background:#ffffff;
+            border-radius:28px;
+            padding:22px 26px 18px 26px;
+            box-shadow:0 18px 40px rgba(15,23,42,0.08);
+            border:1px solid #e5e7eb;
+            margin-top:6px;
+        }
+        .landing-feature-header{
+            text-align:center;
+            font-size:17px;
+            font-weight:700;
+            color:#111827;
+            margin-bottom:4px;
+        }
+        .landing-feature-sub{
+            text-align:center;
+            font-size:12px;
+            color:#6b7280;
+            margin-bottom:18px;
+        }
+        .landing-feature-grid{
+            display:flex;
+            gap:14px;
+            flex-wrap:wrap;
+        }
+        .landing-feature-card{
+            flex:1 1 0;
+            min-width:220px;
+            background:#f9fafb;
+            border-radius:18px;
+            padding:12px 14px;
+            border:1px solid #e5e7eb;
+        }
+        .landing-feature-title{
+            font-size:13px;
+            font-weight:700;
+            color:#111827;
+            margin-bottom:4px;
+        }
+        .landing-feature-body{
+            font-size:12px;
+            color:#6b7280;
+        }
+
+        .landing-footnote{
+            margin-top:22px;
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            font-size:11px;
+            color:#64748b;
+        }
+        .landing-footnote-item{
+            flex:1 1 0;
+            min-width:190px;
+            background:rgba(248,250,252,0.9);
+            border-radius:999px;
+            padding:6px 10px;
+            border:1px solid #e5e7eb;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # =========================
 # UTIL: Excel helpers
@@ -525,6 +497,7 @@ def load_equipment_data() -> pd.DataFrame:
         df = pd.read_excel(path)
         df = df.dropna(how="all").reset_index(drop=True)
 
+        # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกับหน้า QR
         if "สถานะแจ้งซ่อม" not in df.columns:
             df["สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
         if "รูปภาพครุภัณฑ์" not in df.columns:
@@ -549,6 +522,7 @@ def save_equipment_data(df: pd.DataFrame):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
 
+
 # =========================
 # Helper: รูป / QR
 # =========================
@@ -556,6 +530,7 @@ def get_image_path_from_row(row: pd.Series) -> Path | None:
     val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
     if not val:
         return None
+
     p = Path(val)
     if not p.is_absolute():
         p = IMAGE_DIR / p.name
@@ -595,118 +570,6 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-# =========================
-# หน้า Landing
-# =========================
-def landing_page():
-    set_landing_style()
-
-    # ส่วนหัว
-    st.markdown(
-        """
-<div class="landing-wrapper">
-  <div class="landing-badge">ระบบบริหารจัดการเครื่องมือแพทย์ & ห้องปฏิบัติการ</div>
-  <h1 class="landing-title">
-    บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและ<br/>
-    ปลอดภัย แบบ <span>Real-time</span>
-  </h1>
-  <p class="landing-subtitle">
-    จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม
-    และข้อมูลห้องปฏิบัติการ ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
-  </p>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ปุ่ม
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        start_clicked = st.button("เริ่มใช้งานระบบ", type="primary", use_container_width=True)
-        login_clicked = st.button("เข้าสู่ระบบ", use_container_width=True)
-        st.markdown(
-            '<div class="landing-note">สำหรับเจ้าหน้าที่ที่ได้รับสิทธิ์ใช้งานห้องปฏิบัติการเท่านั้น</div>',
-            unsafe_allow_html=True,
-        )
-
-    if start_clicked:
-        st.session_state.logged_in = True
-        st.session_state.username = "guest"
-        st.session_state.display_name = "System Admin"
-        st.session_state.app_mode = "main"
-        st.rerun()
-
-    if login_clicked:
-        st.session_state.app_mode = "login"
-        st.rerun()
-
-    # การ์ดตกแต่งด้านล่าง (ไม่มีสอน 3 ขั้นตอนแล้ว)
-    st.markdown(
-        """
-<div class="landing-section">
-  <div class="landing-section-title">คุณสมบัติเด่นที่รองรับระบบ</div>
-  <div class="landing-section-subtitle">
-    ออกแบบมาเพื่อหน่วยงานด้านสาธารณสุข ใช้งานง่ายทั้งแพทย์ พยาบาล ทีมช่างเทคนิค และผู้บริหาร
-    รองรับงานทะเบียนครุภัณฑ์ งาน PM และการติดตามแจ้งซ่อมในระบบเดียว
-  </div>
-
-  <!-- การ์ดคุณสมบัติหลัก -->
-  <div class="landing-feature-highlight">
-    <div class="landing-feature-highlight-card">
-      <div class="landing-feature-icon">📋</div>
-      <div>
-        <div class="landing-feature-text-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
-        <div class="landing-feature-text-body">
-          บันทึกรายละเอียดเครื่องมือแพทย์ครบถ้วน ตั้งแต่เลขครุภัณฑ์ รุ่น Serial Number อายุการใช้งาน
-          ต้นทุนต่อหน่วย ไปจนถึงข้อมูลการทดสอบสอบเทียบ เพื่อเตรียมข้อมูลให้พร้อมสำหรับการประเมินคุณภาพ
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- การ์ด 3 กลุ่มผู้ใช้งาน -->
-  <div style="font-size:12px; color:#6b7280; margin-bottom:0.8rem; text-align:center;">
-    รองรับการทำงานของทุกฝ่ายในโรงพยาบาล ด้วยมุมมองที่ออกแบบเฉพาะสำหรับแต่ละบทบาท
-  </div>
-
-  <div class="landing-steps-wrapper">
-    <div class="landing-step-card">
-      <div class="landing-step-number">🏥</div>
-      <div>
-        <div class="landing-step-content-title">ห้องปฏิบัติการ & หน่วยงานใช้งาน</div>
-        <div class="landing-step-content-body">
-          ค้นหาเครื่องมือที่ต้องการใช้งานได้รวดเร็ว เห็นสถานะพร้อมใช้ / ชำรุด / รอซ่อมแบบชัดเจน
-          ลดการสับสนเรื่องการจองและการหมุนเวียนเครื่องมือในแต่ละแผนก
-        </div>
-      </div>
-    </div>
-
-    <div class="landing-step-card">
-      <div class="landing-step-number">🛠️</div>
-      <div>
-        <div class="landing-step-content-title">ทีมซ่อมบำรุง & วิศวกรชีวการแพทย์</div>
-        <div class="landing-step-content-body">
-          รับแจ้งซ่อมจากหน้างานได้ทันที พร้อมบันทึกรายการซ่อม ประวัติการเปลี่ยนอะไหล่
-          และวางแผน PM ล่วงหน้า ลดโอกาสที่เครื่องมือหยุดให้บริการแบบไม่คาดคิด
-        </div>
-      </div>
-    </div>
-
-    <div class="landing-step-card">
-      <div class="landing-step-number">📊</div>
-      <div>
-        <div class="landing-step-content-title">ผู้บริหาร & งานบริหารคุณภาพ</div>
-        <div class="landing-step-content-body">
-          Dashboard แสดงภาพรวมครุภัณฑ์พร้อมใช้ ชำรุด และปลดระวาง
-          ช่วยจัดลำดับความสำคัญในการจัดหาและปรับปรุงระบบ รองรับการตรวจประเมินมาตรฐานต่าง ๆ
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 # =========================
 # หน้า Login
@@ -724,22 +587,18 @@ def login_page():
     password = st.text_input("🔐 รหัสผ่าน", type="password", key="login_password")
 
     st.markdown('<div class="mem-login-btn">', unsafe_allow_html=True)
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        login_clicked = st.button("เข้าสู่ระบบ", use_container_width=True)
-    with col_btn2:
-        back_clicked = st.button("⬅️ กลับไปหน้าแรก", use_container_width=True)
+    login_clicked = st.button("เข้าสู่ระบบ", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.button("⬅️ กลับไปหน้าแรก", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.page_state = PAGE_LANDING
+        st.rerun()
 
     st.markdown(
         '<div class="mem-login-footer">หากลืมรหัสผ่าน กรุณาติดต่อผู้ดูแลระบบ</div>',
         unsafe_allow_html=True,
     )
-
-    if back_clicked:
-        st.session_state.logged_in = False
-        st.session_state.app_mode = "landing"
-        st.rerun()
 
     if login_clicked:
         ok, display_name = authenticate_user(username, password)
@@ -747,10 +606,126 @@ def login_page():
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.display_name = display_name
-            st.session_state.app_mode = "main"
+            st.session_state.page_state = PAGE_MAIN
+            st.session_state.current_menu = "หน้าหลัก"
             st.rerun()
         else:
-            st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
+            st.error("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+
+
+# =========================
+# หน้า Landing
+# =========================
+def landing_page():
+    set_landing_style()
+
+    st.markdown(
+        """
+        <div class="landing-badge">
+            ระบบบริหารจัดการเครื่องมือแพทย์ & ห้องปฏิบัติการ
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="landing-title">
+            บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและ<br>
+            ปลอดภัย แบบ <span style="color:#2563eb;">Real-time</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="landing-subtitle">
+            จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม 
+            และข้อมูลห้องปฏิบัติการ ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="landing-buttons">', unsafe_allow_html=True)
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        start_clicked = st.button("เริ่มใช้งานระบบ", key="btn_landing_start", use_container_width=True)
+    with col2:
+        login_clicked = st.button("เข้าสู่ระบบ", key="btn_landing_login", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="landing-caption">
+            สำหรับเจ้าหน้าที่ที่ได้รับสิทธิ์ใช้งานระบบแล้วเท่านั้น
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ส่วนคุณสมบัติเด่น
+    st.markdown(
+        """
+        <div class="landing-feature-section">
+            <div class="landing-feature-header">
+                คุณสมบัติเด่นที่พร้อมช่วยงานของคุณ
+            </div>
+            <div class="landing-feature-sub">
+                ออกแบบมาสำหรับงานห้องปฏิบัติการ โรงพยาบาล และทีมช่างเทคนิคเครื่องมือแพทย์ 
+                เน้นใช้งานง่าย เห็นภาพรวมได้ในหน้าเดียว
+            </div>
+            <div class="landing-feature-grid">
+                <div class="landing-feature-card">
+                    <div class="landing-feature-title">ทะเบียนครุภัณฑ์ครบถ้วน</div>
+                    <div class="landing-feature-body">
+                        เก็บข้อมูลตามทรัพย์สินจริง ครอบคลุมรหัสครุภัณฑ์ รุ่น Serial Number 
+                        สถานะการใช้งาน และข้อมูลผู้รับผิดชอบ
+                    </div>
+                </div>
+                <div class="landing-feature-card">
+                    <div class="landing-feature-title">แจ้งซ่อมและบำรุงรักษาแบบมีระบบ</div>
+                    <div class="landing-feature-body">
+                        บันทึกประวัติการแจ้งซ่อมและการดำเนินงาน 
+                        ช่วยให้เห็นแนวโน้มปัญหาและประเมินความคุ้มค่าในการซ่อม / เปลี่ยนใหม่
+                    </div>
+                </div>
+                <div class="landing-feature-card">
+                    <div class="landing-feature-title">Dashboard สถานะเครื่องมือแบบ Real-time</div>
+                    <div class="landing-feature-body">
+                        แสดงจำนวนเครื่องมือพร้อมใช้ ชำรุด ตรวจไม่พบ 
+                        และการกระจายตัวตามหน่วยงาน ช่วยให้วางแผนจัดซื้อทดแทนได้ง่ายขึ้น
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="landing-footnote">
+            <div class="landing-footnote-item">
+                ✅ เหมาะกับการใช้งานในโรงพยาบาล มหาวิทยาลัย และหน่วยงานภาครัฐ
+            </div>
+            <div class="landing-footnote-item">
+                📦 ใช้ไฟล์ Excel เดิมของหน่วยงานเป็นแหล่งข้อมูลหลัก
+            </div>
+            <div class="landing-footnote-item">
+                🔐 มีระบบล็อกอิน แยกสิทธิ์การใช้งานตามบทบาท
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # กดปุ่มใดปุ่มหนึ่ง -> ไปหน้า login เสมอ
+    if start_clicked or login_clicked:
+        st.session_state.page_state = PAGE_LOGIN
+        st.rerun()
+
 
 # =========================
 # Helper: ใส่สไตล์ใน Altair chart
@@ -765,6 +740,104 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
         )
     )
 
+
+# =========================
+# หน้า Public QR View (ไม่ต้องล็อกอิน)
+# =========================
+def page_qr_public_view(asset_code: str):
+    # ซ่อน sidebar และใช้พื้นหลังอ่อน ๆ
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"]{display:none;}
+        [data-testid="stSidebarNav"]{display:none;}
+        .block-container{
+            max-width: 720px !important;
+            padding-top: 2.5rem !important;
+            padding-bottom: 2.5rem !important;
+            margin: 0 auto;
+        }
+        [data-testid="stAppViewContainer"]{
+            background:#f3f4f6;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    df = load_equipment_data()
+    if df.empty:
+        st.error("ไม่พบข้อมูลครุภัณฑ์ (ยังไม่มีไฟล์ Excel หรือไม่มีข้อมูล)")
+        return
+
+    if ASSET_CODE_COL not in df.columns:
+        st.error(f"ไม่พบคอลัมน์ '{ASSET_CODE_COL}' ในไฟล์ Excel")
+        return
+
+    rows = df[df[ASSET_CODE_COL].astype(str) == str(asset_code)]
+    if rows.empty:
+        st.error(f"ไม่พบครุภัณฑ์ที่มีรหัส: {asset_code}")
+        return
+
+    row = rows.iloc[0]
+
+    name = str(row.get("ชื่อ", "") or "")
+    st.subheader(f"รหัสครุภัณฑ์: {asset_code}")
+    if name:
+        st.write(f"**ชื่อครุภัณฑ์:** {name}")
+
+    st.write("")
+
+    # สร้าง QR ของลิงก์หน้านี้เอง
+    url_for_qr = f"https://mem-system-dashboard.streamlit.app/?view=qr&code={asset_code}"
+    qr_bytes = generate_qr_bytes_for_url(url_for_qr)
+
+    st.image(qr_bytes, caption="QR Code ของครุภัณฑ์", use_column_width=False)
+
+    st.download_button(
+        "⬇️ ดาวน์โหลด QR (PNG)",
+        data=qr_bytes,
+        file_name=f"{asset_code}_qr.png",
+        mime="image/png",
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+
+    st.subheader("รูปภาพครุภัณฑ์")
+
+    current_img_path = get_image_path_from_row(row)
+    if current_img_path and current_img_path.exists():
+        st.image(str(current_img_path), caption="รูปภาพปัจจุบัน", use_column_width=True)
+    else:
+        st.info("ยังไม่มีรูปภาพสำหรับรายการนี้")
+
+    uploaded_img = st.file_uploader(
+        "อัปโหลดรูปภาพใหม่ (PNG / JPG / JPEG)", type=["png", "jpg", "jpeg"]
+    )
+
+    if st.button("บันทึกการแก้ไขรูปภาพ", type="primary"):
+        if uploaded_img is None:
+            st.warning("กรุณาเลือกรูปภาพก่อน")
+            return
+
+        df_current = load_equipment_data()
+        rows2 = df_current[df_current[ASSET_CODE_COL].astype(str) == str(asset_code)]
+        if rows2.empty:
+            st.error("ไม่พบข้อมูลครุภัณฑ์ในไฟล์ Excel (อาจมีการลบออกไปแล้ว)")
+            return
+        idx = rows2.index[0]
+
+        filename = save_uploaded_image(uploaded_img, asset_code)
+        if "รูปภาพครุภัณฑ์" not in df_current.columns:
+            df_current["รูปภาพครุภัณฑ์"] = ""
+        df_current.at[idx, "รูปภาพครุภัณฑ์"] = filename
+
+        save_equipment_data(df_current)
+        st.success("บันทึกรูปภาพเรียบร้อยแล้ว")
+        st.rerun()
+
+
 # =========================
 # หน้า "หน้าหลัก" + Dashboard
 # =========================
@@ -773,12 +846,12 @@ def page_home():
 
     st.markdown(
         """
-<div style="margin-bottom: 0.2rem;">
-  <div class="mem-page-title">หน้าหลัก</div>
-  <div class="mem-page-subtitle">
-    ภาพรวมการจัดการครุภัณฑ์ และเครื่องมือห้องปฏิบัติการ (ดึงข้อมูลจากไฟล์ Excel ที่เลือกอยู่)
-  </div>
-</div>
+        <div style="margin-bottom: 0.2rem;">
+            <div class="mem-page-title">หน้าหลัก</div>
+            <div class="mem-page-subtitle">
+                ภาพรวมการจัดการครุภัณฑ์ และเครื่องมือห้องปฏิบัติการ (ดึงข้อมูลจากไฟล์ Excel ที่เลือกอยู่)
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -793,6 +866,7 @@ def page_home():
         st.warning("ไม่พบคอลัมน์ 'สถานะ' ในไฟล์ Excel")
         return
 
+    # --------- เตรียมข้อมูลสถานะ ---------
     status_counts = (
         df[status_col]
         .fillna("ไม่ทราบสถานะ")
@@ -827,9 +901,10 @@ def page_home():
 
     alt_color_scale = alt.Scale(
         domain=list(color_map.keys()),
-        range=[color_map[k] for k in color_map.keys()],
+        range=[color_map[k] for k in color_map.keys() ],
     )
 
+    # --------- ข้อมูลตามสถานที่ใช้งาน ---------
     loc_col = "สถานที่ใช้งาน (ปัจจุบัน)"
     loc_total = 0
     top_loc_name = "ไม่พบข้อมูล"
@@ -848,6 +923,7 @@ def page_home():
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
+    # --------- SUMMARY ตัวเลข (Hero Card) ---------
     def get_count(label: str) -> int:
         try:
             return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
@@ -933,6 +1009,7 @@ def page_home():
     )
     st.markdown(hero_html, unsafe_allow_html=True)
 
+    # --------- PIE CHART (Donut) + ตาราง ---------
     base_pie = (
         alt.Chart(status_counts)
         .encode(
@@ -970,11 +1047,11 @@ def page_home():
 
     st.markdown(
         """
-<div class="mem-card">
-  <div class="mem-card-title">สัดส่วนตามสถานะครุภัณฑ์</div>
-  <div class="mem-card-subtitle">
-    แสดงสัดส่วนและจำนวนครุภัณฑ์แต่ละสถานะ ช่วยให้เห็นภาพรวมความพร้อมใช้งานของครุภัณฑ์ทั้งหมด
-  </div>
+        <div class="mem-card">
+            <div class="mem-card-title">สัดส่วนตามสถานะครุภัณฑ์</div>
+            <div class="mem-card-subtitle">
+                แสดงสัดส่วนและจำนวนครุภัณฑ์แต่ละสถานะ ช่วยให้เห็นภาพรวมความพร้อมใช้งานของครุภัณฑ์ทั้งหมด
+            </div>
         """,
         unsafe_allow_html=True,
     )
@@ -995,14 +1072,15 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # --------- HERO CARD ที่ 2: แสดง Top สถานที่ ---------
     if not loc_counts.empty:
         metric_parts = []
         for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
-            name = str(r["สถานที่ใช้งาน"])
+            name2 = str(r["สถานที่ใช้งาน"])
             cnt = int(r["count"])
             metric_parts.append(
                 '<div class="mem-hero-metric">'
-                f'<div class="mem-hero-metric-label">{name}</div>'
+                f'<div class="mem-hero-metric-label">{name2}</div>'
                 f'<div class="mem-hero-metric-value">{cnt}</div>'
                 f'<span class="mem-hero-metric-pill">อันดับ {rank}</span>'
                 '</div>'
@@ -1019,6 +1097,7 @@ def page_home():
             + "</div></div>"
         )
         st.markdown(loc_hero_html, unsafe_allow_html=True)
+
 
 # =========================
 # Helper: ตาราง + เลือกแถว (สำหรับลบ)
@@ -1044,6 +1123,7 @@ def equipment_table_with_selection(df: pd.DataFrame):
 
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
+
 
 # =========================
 # หน้า "รายการครุภัณฑ์"
@@ -1113,6 +1193,7 @@ def page_equipment_list():
     st.markdown("### ตารางรายการครุภัณฑ์")
     equipment_table_with_selection(df)
 
+    # ---------- ปุ่มลบข้อมูล ----------
     st.markdown("#### จัดการลบข้อมูล")
     col_del1, col_del2 = st.columns([1, 1.2])
 
@@ -1142,11 +1223,12 @@ def page_equipment_list():
                 st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
                 st.rerun()
 
+    # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
-        row = df.iloc[i]
-        name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
-        code = str(row.get(ASSET_CODE_COL, ""))
-        return f"{i+1:03d} - {name} ({code})"
+        row_i = df.iloc[i]
+        name_i = str(row_i.get("ชื่อ", "ไม่ทราบชื่อ"))
+        code_i = str(row_i.get(ASSET_CODE_COL, ""))
+        return f"{i+1:03d} - {name_i} ({code_i})"
 
     options_index = list(df.index)
     default_idx = st.session_state.get("selected_row_idx", 0)
@@ -1177,6 +1259,7 @@ def page_equipment_list():
     row = df.iloc[selected_idx].copy()
     asset_code = str(row.get(ASSET_CODE_COL, ""))
 
+    # ---- ฟิลด์หลัก (ยกเว้น สถานะแจ้งซ่อม + รูปภาพครุภัณฑ์ ที่จัดส่วนต่างหาก) ----
     columns_list = [
         c
         for c in df.columns
@@ -1210,6 +1293,7 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
+    # ---- ส่วนสถานะแจ้งซ่อม ----
     st.markdown("### สถานะแจ้งซ่อม")
     current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
     if current_maint not in MAINT_STATUS_CHOICES:
@@ -1223,6 +1307,7 @@ def page_equipment_list():
     )
     updated_values["สถานะแจ้งซ่อม"] = maint_select
 
+    # ---- ส่วน QR + รูปภาพ ----
     st.markdown("### QR Code และรูปภาพครุภัณฑ์")
     qr_col, img_col = st.columns([1, 1])
 
@@ -1231,12 +1316,13 @@ def page_equipment_list():
         qr_path = get_qr_image_path_from_row(row)
         qr_bytes_for_download = None
 
+        url_for_qr = f"https://mem-system-dashboard.streamlit.app/?view=qr&code={asset_code}"
+
         if qr_path and qr_path.exists():
             st.image(str(qr_path), use_column_width=True)
             with open(qr_path, "rb") as f:
                 qr_bytes_for_download = f.read()
         else:
-            url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
             qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
             st.image(qr_bytes_for_download, use_column_width=True)
 
@@ -1275,6 +1361,7 @@ def page_equipment_list():
             st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
             return
 
+        # อัปเดตค่าฟิลด์ทั้งหมดตาม updated_values
         for col in updated_values:
             if col not in df_current.columns:
                 continue
@@ -1292,6 +1379,7 @@ def page_equipment_list():
             else:
                 df_current.at[selected_idx, col] = raw_val
 
+        # ถ้าอัปโหลดรูปใหม่ -> เซฟและเก็บชื่อไฟล์ในคอลัมน์ "รูปภาพครุภัณฑ์"
         if uploaded_img is not None:
             filename = save_uploaded_image(uploaded_img, asset_code)
             if "รูปภาพครุภัณฑ์" not in df_current.columns:
@@ -1300,6 +1388,7 @@ def page_equipment_list():
 
         save_equipment_data(df_current)
         st.rerun()
+
 
 # =========================
 # หน้า "แจ้งซ่อม / บำรุงรักษา"
@@ -1317,7 +1406,7 @@ def page_maintenance():
         return
 
     if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ \'สถานะแจ้งซ่อม\' ในไฟล์ Excel")
+        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
         return
 
     maint_counts = (
@@ -1330,11 +1419,11 @@ def page_maintenance():
 
     st.markdown(
         """
-<div class="mem-card">
-  <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
-  <div class="mem-card-subtitle">
-    แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
-  </div>
+        <div class="mem-card">
+            <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
+            <div class="mem-card-subtitle">
+                แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
+            </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1359,6 +1448,7 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+
 # =========================
 # หน้า "รายงานสรุป"
 # =========================
@@ -1370,6 +1460,7 @@ def page_summary():
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
 
+
 # =========================
 # MAIN APP หลัง Login
 # =========================
@@ -1379,11 +1470,11 @@ def main_app():
     with st.sidebar:
         st.markdown(
             f"""
-<div class="mem-sidebar-user">
-  <div style="font-size:28px; font-weight:700; margin-bottom:4px;">AD</div>
-  <div class="mem-sidebar-user-name">{st.session_state.get('display_name', 'admin')}</div>
-  <div class="mem-sidebar-user-sub">เข้าสู่ระบบสำเร็จ</div>
-</div>
+            <div class="mem-sidebar-user">
+              <div style="font-size:28px; font-weight:700; margin-bottom:4px;">AD</div>
+              <div class="mem-sidebar-user-name">{st.session_state.get('display_name', 'admin')}</div>
+              <div class="mem-sidebar-user-sub">เข้าสู่ระบบสำเร็จ</div>
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -1417,7 +1508,8 @@ def main_app():
         if st.button("Logout", type="primary", use_container_width=True):
             for k in list(st.session_state.keys()):
                 del st.session_state[k]
-            st.session_state.app_mode = "landing"
+            st.session_state.logged_in = False
+            st.session_state.page_state = PAGE_LANDING
             st.rerun()
 
     menu = st.session_state.get("current_menu", "หน้าหลัก")
@@ -1431,27 +1523,47 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
+
 # =========================
 # ENTRY POINT
 # =========================
+
+# init session state
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-if "current_menu" not in st.session_state:
-    st.session_state.current_menu = "หน้าหลัก"
+if "page_state" not in st.session_state:
+    st.session_state.page_state = PAGE_LANDING
 if "selected_row_idx" not in st.session_state:
     st.session_state.selected_row_idx = 0
-if "app_mode" not in st.session_state:
-    st.session_state.app_mode = "landing"
 
-mode = st.session_state.app_mode
+# อ่าน query param (รองรับ public QR view)
+try:
+    query_params = st.query_params
+except Exception:
+    query_params = st.experimental_get_query_params()
 
-if mode == "landing":
-    landing_page()
-elif mode == "login":
-    login_page()
-else:  # "main"
-    if not st.session_state.get("logged_in", False):
-        st.session_state.app_mode = "login"
-        login_page()
+
+def get_param(name: str, default: str = "") -> str:
+    val = query_params.get(name, default)
+    if isinstance(val, list):
+        return val[0] if val else default
+    return val
+
+
+view_param = get_param("view", "")
+code_param = get_param("code", "").strip()
+
+# ถ้าเป็นลิงก์จาก QR (view=qr & code=...) ให้เปิดหน้า public QR view เลย
+if view_param == "qr" and code_param:
+    page_qr_public_view(code_param)
+
+else:
+    # flow ปกติ (ต้องล็อกอิน)
+    if not st.session_state.logged_in:
+        if st.session_state.page_state == PAGE_LOGIN:
+            login_page()
+        else:
+            landing_page()
     else:
+        st.session_state.page_state = PAGE_MAIN
         main_app()
