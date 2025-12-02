@@ -6,6 +6,9 @@ import qrcode
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 
+# ---------------------------------
+# ค่าคงที่ / โฟลเดอร์เก็บรูป
+# ---------------------------------
 ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 IMAGE_DIR = Path("asset_images")
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -17,11 +20,12 @@ st.set_page_config(
 )
 
 
-# ----------------------------- #
-#  ฟังก์ชันจัดการไฟล์ Excel
-# ----------------------------- #
+# ---------------------------------
+# ฟังก์ชันจัดการไฟล์ Excel
+# ---------------------------------
 def get_excel_path() -> Path | None:
-    """เลือกไฟล์ Excel ที่ใช้เป็นฐานข้อมูล"""
+    """เลือกไฟล์ Excel ที่ใช้เป็นฐานข้อมูลหลัก"""
+    # ถ้าระบุ DEFAULT_EXCEL_PATH ไว้ และมีอยู่จริง ให้ใช้ตัวนั้นก่อน
     if DEFAULT_EXCEL_PATH.exists():
         return DEFAULT_EXCEL_PATH
 
@@ -39,6 +43,7 @@ def get_excel_path() -> Path | None:
 
 @st.cache_data
 def load_equipment_data(path: str) -> pd.DataFrame:
+    """โหลดข้อมูลครุภัณฑ์จาก Excel"""
     try:
         df = pd.read_excel(path).dropna(how="all").reset_index(drop=True)
         if "รูปภาพครุภัณฑ์" not in df.columns:
@@ -50,25 +55,28 @@ def load_equipment_data(path: str) -> pd.DataFrame:
 
 
 def save_equipment_data(df: pd.DataFrame, path: Path) -> None:
+    """บันทึก DataFrame กลับลง Excel"""
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_excel(path, index=False)
 
 
-# ----------------------------- #
-#  รูป / QR
-# ----------------------------- #
+# ---------------------------------
+# ฟังก์ชันเกี่ยวกับรูป / QR
+# ---------------------------------
 def get_image_path_from_row(row: pd.Series) -> Path | None:
+    """อ่าน path ของรูปจากแถวข้อมูล แล้วชี้ไปที่โฟลเดอร์ asset_images"""
     val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
     if not val:
         return None
     p = Path(val)
-    # ให้เก็บจริงในโฟลเดอร์ asset_images เสมอ
+    # ให้ map เข้าโฟลเดอร์ asset_images เสมอ
     if not p.is_absolute():
         p = IMAGE_DIR / p.name
     return p
 
 
 def save_uploaded_image(file, asset_code: str) -> Path | None:
+    """บันทึกรูปที่อัปโหลดเข้ามา ลงโฟลเดอร์ asset_images"""
     if not file:
         return None
     suffix = Path(file.name).suffix or ".png"
@@ -80,6 +88,7 @@ def save_uploaded_image(file, asset_code: str) -> Path | None:
 
 
 def generate_qr_bytes(url: str) -> bytes:
+    """สร้างรูป QR จาก URL แล้วคืนค่าเป็น bytes (PNG)"""
     img = qrcode.make(url)
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -87,9 +96,9 @@ def generate_qr_bytes(url: str) -> bytes:
     return buf.getvalue()
 
 
-# ----------------------------- #
-#  อ่านค่า code จาก URL
-# ----------------------------- #
+# ---------------------------------
+# อ่าน query param จาก URL
+# ---------------------------------
 try:
     query_params = st.query_params
 except Exception:
@@ -104,9 +113,9 @@ if not asset_code:
     st.error("ไม่พบรหัสครุภัณฑ์จาก QR (parameter `code` ว่าง)")
     st.stop()
 
-# ----------------------------- #
-#  โหลดข้อมูลจาก Excel
-# ----------------------------- #
+# ---------------------------------
+# โหลดข้อมูลจาก Excel
+# ---------------------------------
 excel_path = get_excel_path()
 if not excel_path or not excel_path.exists():
     st.error("ไม่พบไฟล์ Excel ฐานข้อมูลครุภัณฑ์")
@@ -125,37 +134,39 @@ if row_df.empty:
     st.error(f"ไม่พบครุภัณฑ์ที่มีรหัส: {asset_code}")
     st.stop()
 
+# แถวข้อมูลของครุภัณฑ์ที่ต้องการ
 row = row_df.iloc[0]
 row_index = row_df.index[0]
 
-# ----------------------------- #
-#  UI ส่วนหัว
-# ----------------------------- #
+# ---------------------------------
+# ส่วนหัวหน้าจอ
+# ---------------------------------
 name = str(row.get("ชื่อ", "ไม่พบชื่อครุภัณฑ์"))
+
 st.markdown(
     f"""
-    <h2 style="margin-bottom:0.2rem;">รหัสครุภัณฑ์: {asset_code}</h2>
-    <h4 style="color:#4b5563; margin-top:0;">ชื่อครุภัณฑ์: {name}</h4>
+    <div style="margin-bottom:0.4rem;">
+        <h2 style="margin-bottom:0.2rem;">รหัสครุภัณฑ์: {asset_code}</h2>
+        <h4 style="color:#4b5563; margin-top:0;">ชื่อครุภัณฑ์: {name}</h4>
+    </div>
     """,
     unsafe_allow_html=True,
 )
-st.caption(f"ข้อมูลจากไฟล์ Excel: `{excel_path.name}`")
+st.caption(f"ข้อมูลดึงจากไฟล์ Excel: `{excel_path.name}` (โฟลเดอร์ data ของระบบหลัก)")
 
 st.write("---")
 
-# ----------------------------- #
-#   QR + ข้อมูล / รูปภาพ
-# ----------------------------- #
+# ---------------------------------
+# Layout หลัก (QR + ข้อมูล + รูปภาพ)
+# ---------------------------------
 left, right = st.columns([1, 1.1])
 
 with left:
+    # --------- QR Code ----------
     st.subheader("QR Code ของครุภัณฑ์")
 
-    # url ของหน้านี้เอง (ใช้โดเมนของเว็บ QR นี้)
-    url_self = f"{st.get_option('server.baseUrlPath') or ''}"
-    # ถ้ารันบน Streamlit Cloud url_self จะว่าง ให้ใช้โดเมนจากเบราว์เซอร์แทน
-    url_self = f"{st.experimental_get_query_params()}"
-    # ง่ายสุด: เขียนตรง ๆ ตามโดเมนที่ใช้จริง
+    # URL ของหน้านี้เอง (เติมโดเมนของเว็บ QR ให้ตรงกับที่ใช้จริง)
+    # แก้ให้ตรงกับโดเมนของคุณ เช่น mem-system-dashboard-qr.streamlit.app
     url_self = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
 
     qr_bytes = generate_qr_bytes(url_self)
@@ -170,6 +181,7 @@ with left:
     )
 
     st.write("")
+    # --------- ข้อมูลสรุป ----------
     st.subheader("ข้อมูลสรุปครุภัณฑ์")
 
     cols_left = [
@@ -199,6 +211,7 @@ with left:
                 st.write(f"**{col}** : {row.get(col, '-')}")
 
 with right:
+    # --------- รูปภาพ ----------
     st.subheader("รูปภาพครุภัณฑ์")
 
     current_img_path = get_image_path_from_row(row)
@@ -218,17 +231,25 @@ with right:
         if uploaded is None:
             st.warning("กรุณาเลือกไฟล์รูปก่อน")
         else:
+            # บันทึกรูปลงโฟลเดอร์ asset_images
             save_path = save_uploaded_image(uploaded, asset_code)
-            # อัปเดตลง DataFrame และบันทึกกลับไปที่ Excel
+
+            # อัปเดต path (เก็บแค่ชื่อไฟล์) ลงใน DataFrame
             df.at[row_index, "รูปภาพครุภัณฑ์"] = save_path.name
+
+            # บันทึกกลับไปที่ Excel หลัก
             save_equipment_data(df, excel_path)
-            # ล้าง cache แล้วรันใหม่เพื่อให้เห็นรูปล่าสุด
+
+            # เคลียร์ cache แล้ว reload ใหม่เพื่อให้เห็นผลทันที
             load_equipment_data.clear()
-            st.success("บันทึกรูปภาพเรียบร้อยแล้ว (หน้าเว็บหลักที่ใช้ Excel เดียวกันจะเห็นข้อมูลตรงกัน)")
+            st.success(
+                "บันทึกรูปภาพเรียบร้อยแล้ว "
+                "(ระบบที่ใช้ไฟล์ Excel เดียวกันจะเห็นข้อมูลตรงกันอัตโนมัติ)"
+            )
             st.rerun()
 
 st.write("---")
 st.caption(
-    "หมายเหตุ: หน้า QR นี้จะอัปเดตข้อมูลในไฟล์ Excel เดียวกับระบบหลัก "
-    "ถ้าเว็บหลักใช้ไฟล์คนละชุดหรือคนละเครื่องกัน ข้อมูลจะไม่เชื่อมกันนะครับ"
+    "หมายเหตุ: หน้า QR นี้แก้ไขข้อมูลในไฟล์ Excel เดียวกับระบบหลัก "
+    "ถ้าระบบหลัก/เว็บอื่นใช้ไฟล์คนละชุดหรือคนละเซิร์ฟเวอร์ ข้อมูลจะไม่ซิงค์กันนะครับ"
 )
