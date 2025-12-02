@@ -1,1431 +1,1199 @@
+# app.py
+import os, time
+from datetime import datetime, date, datetime as dt
 import pandas as pd
 import altair as alt
 import streamlit as st
-from pathlib import Path
-from io import BytesIO
-import qrcode
+from streamlit.components.v1 import html as st_html
 
-from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
-from auth import authenticate_user
+# ===== optional autorefresh =====
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    def st_autorefresh(*args, **kwargs):
+        return None
 
-# =========================
-# CONFIG พื้นฐาน
-# =========================
+# ===== DB funcs =====
+from db import init_db, get_all_status, get_stock_by_blood, adjust_stock, reset_all_stock
+
+# --------------------------------
+# CONFIG & CONSTANTS
+# --------------------------------
 st.set_page_config(
-    page_title="MEM System – Medical Equipment Management",
-    page_icon="🩺",
-    layout="wide",
+    page_title="Blood Stock Real-time Monitor",
+    page_icon="🩸",
+    layout="wide"
 )
 
-# คอลัมน์รหัสครุภัณฑ์ที่ใช้ร่วมกับหน้า QR
-ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
+st.markdown(
+    """
+<style>
+.block-container{padding-top:1.0rem;}
+h1,h2,h3{letter-spacing:.2px}
 
-# โฟลเดอร์รูปและ QR
-IMAGE_DIR = Path("asset_images")
-QR_IMAGES_DIR = Path("qr_images")
-IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-QR_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+/* badge legend */
+.badge{display:inline-flex;align-items:center;gap:.4rem;padding:.25rem .5rem;border-radius:999px;background:#f3f4f6}
+.legend-dot{width:.7rem;height:.7rem;border-radius:999px;display:inline-block}
 
-MAINT_STATUS_CHOICES = [
-    "ยังไม่เคยแจ้งซ่อม",
-    "แจ้งซ่อมแล้ว - กำลังดำเนินการ",
-    "ซ่อมเสร็จแล้ว",
-    "ปลดระวาง / รอจำหน่าย",
+/* Sidebar */
+[data-testid="stSidebar"]{background:#2e343a;}
+[data-testid="stSidebar"] .sidebar-title{color:#e5e7eb;font-weight:800;font-size:1.06rem;margin:6px 0 10px 4px}
+[data-testid="stSidebar"] .user-card{display:flex;align-items:center;gap:.8rem;background:linear-gradient(135deg,#39424a,#2f343a);border:1px solid #475569;border-radius:14px;padding:.75rem .9rem;margin:.5rem .2rem 1rem .2rem;box-shadow:0 8px 22px rgba(0,0,0,.25)}
+[data-testid="stSidebar"] .user-avatar{width:40px;height:40px;border-radius:999px;background:#ef4444;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 0 0 3px rgba(239,68,68,.25)}
+[data-testid="stSidebar"] .user-meta{display:flex;flex-direction:column;line-height:1.1}
+[data-testid="stSidebar"] .user-meta .label{font-size:.75rem;color:#cbd5e1}
+[data-testid="stSidebar"] .user-meta .name{font-size:1rem;color:#fff;font-weight:800}
+[data-testid="stSidebar"] .stButton>button{width:100%;background:#ffffff;color:#111827;border:1px solid #cbd5e1;border-radius:12px;font-weight:700;justify-content:flex-start}
+[data-testid="stSidebar"] .stButton>button:hover{background:#f3f4f6}
+
+/* DataFrame */
+[data-testid="stDataFrame"] table {font-size:14px;}
+[data-testid="stDataFrame"] th {font-size:14px; font-weight:700; color:#111827;}
+
+/* Sticky minimal banner */
+#expiry-banner{position:sticky;top:0;z-index:1000;border-radius:14px;margin:6px 0 12px 0;padding:12px 14px;border:2px solid #991b1b;background:linear-gradient(180deg,#fee2e2,#ffffff);box-shadow:0 10px 24px rgba(153,27,27,.12)}
+#expiry-banner .title{font-weight:900;font-size:1.02rem;color:#7f1d1d}
+#expiry-banner .chip{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .55rem;border-radius:999px;font-weight:800;background:#ef4444;color:#fff;margin-left:.5rem}
+#expiry-banner .chip.warn{background:#f59e0b}
+
+/* Flash */
+.flash{position:fixed; top:110px; right:24px; z-index:9999; color:#fff; padding:.7rem 1rem; border-radius:12px; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.18)}
+.flash.success{background:#16a34a}
+.flash.info{background:#0ea5e9}
+.flash.warning{background:#f59e0b}
+.flash.error{background:#ef4444}
+
+/* ---------- Landing page ---------- */
+.landing-bg{
+    border-radius:28px;
+    padding:26px 30px 30px 30px;
+    margin:6px 0 24px 0;
+    background:radial-gradient(circle at 0 0,#fee2e2 0,#fff 35%),
+               radial-gradient(circle at 100% 100%,#dbeafe 0,#ffffff 55%);
+    box-shadow:0 24px 60px rgba(15,23,42,.18);
+}
+.landing-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
+    gap:32px;
+    align-items:center;
+}
+.landing-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:.45rem;
+    padding:.25rem .7rem;
+    border-radius:999px;
+    background:rgba(239,68,68,.08);
+    color:#b91c1c;
+    font-size:.85rem;
+    font-weight:700;
+}
+.landing-title{
+    font-size:1.9rem;
+    line-height:1.25;
+    font-weight:900;
+    color:#111827;
+    margin-top:12px;
+}
+.landing-subtitle{
+    font-size:1rem;
+    color:#4b5563;
+    margin-top:8px;
+}
+.landing-bullets{
+    margin-top:14px;
+    color:#111827;
+    font-size:.96rem;
+}
+.landing-bullets li{
+    margin-bottom:.25rem;
+}
+.landing-stat-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:14px;
+}
+.landing-stat-chip{
+    padding:.35rem .7rem;
+    border-radius:999px;
+    background:#111827;
+    color:#f9fafb;
+    font-size:.78rem;
+    font-weight:700;
+}
+.landing-cta{
+    margin-top:22px;
+}
+.landing-cta button{
+    border-radius:999px!important;
+    font-weight:800!important;
+    font-size:1rem!important;
+}
+
+/* feature cards under landing */
+.landing-features{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:16px;
+    margin-bottom:10px;
+}
+
+/* ---------- Login page ---------- */
+.login-hero{
+    border-radius:26px;
+    margin:8px 0 22px 0;
+    padding:0;
+    box-shadow:0 24px 70px rgba(15,23,42,.22);
+    overflow:hidden;
+    background:#ffffff;
+}
+.login-hero-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1.05fr) minmax(0,1.15fr);
+    min-height:210px;
+}
+.login-left{
+    padding:26px 28px;
+    background:linear-gradient(135deg,#7f1d1d,#b91c1c);
+    color:#fee2e2;
+}
+.login-left-title{
+    font-weight:900;
+    font-size:1.4rem;
+    margin-bottom:.45rem;
+}
+.login-left-sub{
+    font-size:.95rem;
+    margin-bottom:.75rem;
+}
+.login-right{
+    padding:26px 30px;
+}
+.login-right-title{
+    font-size:1.5rem;
+    font-weight:900;
+    color:#111827;
+}
+.login-right-sub{
+    font-size:.96rem;
+    color:#4b5563;
+    margin-top:.25rem;
+}
+
+/* card around login form */
+.login-form-card{
+    margin-top:8px;
+    padding:22px 24px 26px 24px;
+    border-radius:22px;
+    background:#f9fafb;
+    border:1px solid #e5e7eb;
+}
+.login-form-card button[kind="primary"]{
+    border-radius:999px;
+    font-weight:800;
+    background:#ef4444;
+    border-color:#ef4444;
+}
+.login-form-card button[kind="primary"]:hover{
+    background:#dc2626;
+    border-color:#dc2626;
+}
+
+/* Responsive */
+@media (max-width: 900px){
+  .landing-grid{
+      grid-template-columns:minmax(0,1fr);
+  }
+  .landing-bg{
+      padding:22px 18px 24px 18px;
+  }
+  .landing-features{
+      grid-template-columns:minmax(0,1fr);
+  }
+  .login-hero-grid{
+      grid-template-columns:minmax(0,1fr);
+  }
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# ===== CONFIG =====
+BAG_MAX = 20
+CRITICAL_MAX = 4
+YELLOW_MAX = 15
+AUTH_PASSWORD = "1234"
+FLASH_SECONDS = 2.5
+
+RENAME_TO_UI = {"Plasma": "FFP", "Platelets": "PC"}
+UI_TO_DB = {
+    "LPRC": "LPRC",
+    "PRC": "PRC",
+    "FFP": "Plasma",
+    "PC": "Platelets",
+}
+ALL_PRODUCTS_UI = ["LPRC", "PRC", "FFP", "Cryo", "PC"]
+
+# คอลัมน์หลักที่ใช้เก็บใน session_state["entries"]
+ENTRY_COLS = [
+    "created_at",
+    "Exp date",
+    "Unit number",
+    "Group",
+    "Blood Components",
+    "Status",
+    "สถานะ(สี)",
+    "บันทึก",
 ]
 
-# =========================
-# STYLE: Landing Page
-# =========================
-def set_landing_style():
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAppViewContainer"]{
-            background: radial-gradient(circle at top,#e0f2fe 0,#f9fafb 55%,#eef2ff 100%);
-        }
-        [data-testid="stHeader"]{
-            background: transparent;
-        }
-        .landing-container{
-            max-width: 900px;
-            margin: 2.8rem auto 3rem auto;
-            text-align: center;
-        }
-        .landing-badge{
-            display:inline-block;
-            padding:4px 14px;
-            border-radius:999px;
-            background:rgba(15,23,42,0.06);
-            font-size:12px;
-            color:#4b5563;
-            margin-bottom:0.75rem;
-        }
-        .landing-title{
-            font-size:32px;
-            font-weight:800;
-            line-height:1.25;
-            color:#020617;
-            margin-bottom:0.75rem;
-        }
-        .landing-highlight{
-            color:#2563eb;
-        }
-        .landing-sub{
-            font-size:13px;
-            color:#6b7280;
-            max-width:650px;
-            margin:0 auto 1.7rem auto;
-        }
-        .landing-btn-primary button{
-            background:#2563eb;
-            color:#ffffff;
-            border-radius:999px;
-            height:2.8rem;
-            padding:0 2.5rem;
-            font-weight:600;
-            border:none;
-            box-shadow:0 18px 35px rgba(37,99,235,0.25);
-        }
-        .landing-btn-primary button:hover{
-            background:#1d4ed8;
-        }
-        .landing-btn-outline button{
-            border-radius:999px;
-            height:2.8rem;
-            padding:0 2.5rem;
-            font-weight:500;
-            border:1px solid #cbd5f5;
-            background:rgba(255,255,255,0.9);
-            color:#1f2933;
-        }
-        .landing-note{
-            margin-top:0.55rem;
-            font-size:11px;
-            color:#9ca3af;
-        }
-        .landing-feature-wrapper{
-            max-width:1000px;
-            margin:1.5rem auto 0 auto;
-        }
-        .landing-feature-card{
-            background:#ffffff;
-            border-radius:26px;
-            padding:20px 22px;
-            box-shadow:0 18px 40px rgba(15,23,42,0.12);
-            border:1px solid rgba(209,213,219,0.7);
-        }
-        .landing-feature-title{
-            font-size:16px;
-            font-weight:700;
-            margin-bottom:0.4rem;
-            color:#111827;
-        }
-        .landing-feature-sub{
-            font-size:12px;
-            color:#6b7280;
-            margin-bottom:0.8rem;
-        }
-        .landing-feature-grid{
-            display:flex;
-            flex-wrap:wrap;
-            gap:12px;
-        }
-        .landing-feature-item{
-            flex:1 1 0;
-            min-width:220px;
-            background:#f9fafb;
-            border-radius:20px;
-            padding:12px 14px;
-            text-align:left;
-            border:1px solid #e5e7eb;
-        }
-        .landing-feature-icon{
-            font-size:19px;
-            margin-bottom:6px;
-        }
-        .landing-feature-item-title{
-            font-size:13px;
-            font-weight:700;
-            margin-bottom:3px;
-            color:#111827;
-        }
-        .landing-feature-item-text{
-            font-size:11px;
-            color:#6b7280;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+# สถานะหลัก (แก้จาก "จำหน่าย" เป็น "จ่ายแล้ว")
+STATUS_OPTIONS = ["ว่าง", "จอง", "จ่ายแล้ว", "Exp", "หลุดจอง"]
+STATUS_COLOR = {
+    "ว่าง": "🟢 ว่าง",
+    "จอง": "🟠 จอง",
+    "จ่ายแล้ว": "⚫ จ่ายแล้ว",
+    "Exp": "🔴 Exp",
+    "หลุดจอง": "🔵 หลุดจอง",
+}
 
-# =========================
-# STYLE: LOGIN PAGE
-# =========================
-def set_login_style():
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAppViewContainer"]{
-            background: #3B4251;
-        }
-        [data-testid="stHeader"]{
-            background: transparent;
-        }
+# --------------------------------
+# STATE
+# --------------------------------
+def _init_state():
+    st.session_state.setdefault("logged_in", False)
+    st.session_state.setdefault("username", "")
+    # เริ่มที่หน้าหลัก เพื่อแสดง landing ก่อนล็อกอิน
+    st.session_state.setdefault("page", "หน้าหลัก")
+    st.session_state.setdefault("selected_bt", None)
+    st.session_state.setdefault("flash", None)
+    st.session_state.setdefault("last_upload_token", None)
 
-        .block-container{
-            max-width: 460px !important;
-            padding-top: 3rem !important;
-            padding-bottom: 3rem !important;
-            margin: 4rem auto 3rem auto;
-            background: #FFFFFF;
-            border-radius: 28px;
-            box-shadow: 0 28px 60px rgba(0,0,0,0.55);
-        }
-
-        .mem-login-title{
-            text-align: center;
-            font-size: 26px;
-            font-weight: 600;
-            margin-bottom: 0.4rem;
-            color: #111827;
-        }
-        .mem-login-sub{
-            text-align: center;
-            font-size: 12px;
-            color: #6B7280;
-            margin-bottom: 1.6rem;
-        }
-        .mem-login-footer{
-            text-align:center;
-            font-size: 12px;
-            color: #9CA3AF;
-            margin-top: 1rem;
-        }
-
-        .stTextInput > label{
-            font-size: 13px;
-            color: #4B5563;
-        }
-
-        .stTextInput > div > div{
-            border-radius: 999px;
-            border: 1px solid #E5E7EB;
-            background: #F9FAFB;
-            padding: 0 0.75rem;
-            box-shadow: inset 0 1px 2px rgba(15,23,42,0.06);
-        }
-
-        .stTextInput > div > div > input{
-            border-radius: 999px;
-            border: none;
-            background: transparent;
-            outline: none;
-            color: #111827;
-        }
-
-        .mem-login-btn button{
-            background: #020617;
-            color: #FFFFFF;
-            border-radius: 999px;
-            height: 2.7rem;
-            border: none;
-            font-weight: 500;
-        }
-        .mem-login-btn button:hover{
-            background: #000000;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# =========================
-# STYLE: MAIN APP
-# =========================
-def set_main_style():
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAppViewContainer"]{
-            background: #F3F4F6;
-        }
-        [data-testid="stHeader"]{
-            background: #FFFFFF;
-        }
-        .block-container{
-            max-width: 1200px !important;
-            padding-top: 2.0rem !important;
-            padding-bottom: 1.5rem !important;
-            margin: 0 auto;
-            background: transparent;
-            box-shadow: none;
-        }
-
-        /* SIDEBAR */
-        [data-testid="stSidebar"]{
-            background: #1F2430;
-        }
-        [data-testid="stSidebar"] > div{
-            padding-top: 1.1rem;
-            padding-bottom: 1.1rem;
-        }
-        .mem-sidebar-user{
-            background: #0F172A;
-            border-radius: 20px;
-            padding: 14px 16px;
-            color: #E5E7EB;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            margin-bottom: 12px;
-        }
-        .mem-sidebar-user-name{
-            font-weight: 700;
-            font-size: 16px;
-            color: #F9FAFB;
-        }
-        .mem-sidebar-user-sub{
-            font-size: 12px;
-            color: #9CA3AF;
-        }
-        .mem-menu-title{
-            font-size: 13px;
-            font-weight: 600;
-            color: #F9FAFB;
-            margin-bottom: 6px;
-        }
-        .mem-menu-btn,
-        .mem-menu-btn-active{
-            width: 100%;
-            margin-bottom: 2px;
-        }
-        .mem-menu-btn button,
-        .mem-menu-btn-active button{
-            width: 100%;
-            text-align: left;
-            border-radius: 999px;
-            min-height: 2.0rem;
-            font-size: 13px;
-            padding-top: 0.15rem;
-            padding-bottom: 0.15rem;
-        }
-        .mem-menu-btn-active button{
-            background: #F97316 !important;
-            color: #111827 !important;
-            font-weight: 700;
-        }
-
-        .mem-page-title{
-            font-size: 30px;
-            font-weight: 800;
-            color: #111827;
-            margin-bottom: 0.5rem;
-        }
-        .mem-page-subtitle{
-            font-size: 13px;
-            color: #6B7280;
-            margin-bottom: 1.5rem;
-        }
-
-        /* HERO CARD – โทนขาวฟ้า */
-        .mem-hero{
-            background: linear-gradient(135deg,#eef2ff,#e0f2fe);
-            border-radius: 26px;
-            padding: 18px 26px 16px 26px;
-            color: #0f172a;
-            box-shadow: 0 18px 40px rgba(15,23,42,0.18);
-            margin-bottom: 22px;
-            border: 1px solid #dbeafe;
-        }
-        .mem-hero-title{
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .mem-hero-sub{
-            font-size: 13px;
-            opacity: 0.92;
-            margin-bottom: 14px;
-        }
-        .mem-hero-metrics{
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .mem-hero-metric{
-            background: #ffffff;
-            border-radius: 18px;
-            padding: 8px 12px;
-            min-width: 165px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            box-shadow: 0 4px 10px rgba(15,23,42,0.05);
-            border: 1px solid #e5e7eb;
-        }
-        .mem-hero-metric-label{
-            font-size: 11px;
-            color: #6b7280;
-        }
-        .mem-hero-metric-value{
-            font-size: 18px;
-            font-weight: 700;
-            line-height: 1.1;
-            color: #111827;
-        }
-        .mem-hero-metric-pill{
-            margin-top: 4px;
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            background: #eff6ff;
-            color: #1d4ed8;
-        }
-
-        .mem-status-legend-wrapper{
-            margin-top: 10px;
-            overflow-x: auto;
-            padding-bottom: 4px;
-        }
-        .mem-status-legend{
-            display: inline-flex;
-            flex-wrap: nowrap;
-            gap: 8px;
-            font-size: 11px;
-            white-space: nowrap;
-        }
-        .mem-status-legend-item{
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 2px 6px rgba(15,23,42,0.04);
-        }
-        .mem-status-dot{
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-        }
-
-        .mem-card{
-            background: #FFFFFF;
-            border-radius: 32px;
-            padding: 20px 24px 24px 24px;
-            margin-bottom: 26px;
-            box-shadow: 0 22px 52px rgba(15,23,42,0.08);
-            border: 2px solid rgba(148,163,184,0.45);
-            position: relative;
-            overflow: hidden;
-        }
-        .mem-card::before{
-            content: "";
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: 0;
-            height: 5px;
-            border-radius: 30px 30px 0 0;
-            background: linear-gradient(90deg,#22c55e,#0ea5e9,#6366f1);
-        }
-        .mem-card-title{
-            font-size: 18px;
-            font-weight: 700;
-            color: #111827;
-            margin-bottom: 0.6rem;
-        }
-        .mem-card-subtitle{
-            font-size: 12px;
-            color: #9CA3AF;
-            margin-bottom: 0.6rem;
-        }
-
-        .mem-status-table table{
-            font-size: 13px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# =========================
-# UTIL: Excel helpers
-# =========================
-def get_available_excel_files():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
-
-
-def init_excel_file_name():
-    if "excel_file_name" in st.session_state:
-        return
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    files = get_available_excel_files()
-
-    if files:
-        st.session_state["excel_file_name"] = (
-            DEFAULT_EXCEL_NAME if DEFAULT_EXCEL_NAME in files else files[0]
-        )
-    elif DEFAULT_EXCEL_PATH.exists():
-        st.session_state["excel_file_name"] = DEFAULT_EXCEL_NAME
+    if "entries" not in st.session_state:
+        st.session_state["entries"] = pd.DataFrame(columns=ENTRY_COLS)
     else:
-        st.session_state["excel_file_name"] = None
+        for c in ENTRY_COLS:
+            if c not in st.session_state["entries"].columns:
+                st.session_state["entries"][c] = ""
+        st.session_state["entries"] = st.session_state["entries"][ENTRY_COLS].copy()
 
+    if "activity" not in st.session_state:
+        st.session_state["activity"] = []
 
-def get_current_excel_path() -> Path | None:
-    init_excel_file_name()
-    name = st.session_state.get("excel_file_name")
-    if not name:
-        return None
-    return DATA_DIR / name
+_init_state()
 
-
-def load_equipment_data() -> pd.DataFrame:
-    path = get_current_excel_path()
-    if path is None or not path.exists():
-        return pd.DataFrame()
-
+# --------------------------------
+# HELPER FUNCTIONS
+# --------------------------------
+def _safe_rerun():
     try:
-        df = pd.read_excel(path)
-        df = df.dropna(how="all").reset_index(drop=True)
-
-        # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกับหน้า QR
-        if "สถานะแจ้งซ่อม" not in df.columns:
-            df["สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
-        if "รูปภาพครุภัณฑ์" not in df.columns:
-            df["รูปภาพครุภัณฑ์"] = ""
-
-        return df
-    except Exception as e:
-        st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
-        return pd.DataFrame()
-
-
-def save_equipment_data(df: pd.DataFrame):
-    path = get_current_excel_path()
-    if path is None:
-        st.error("ยังไม่ได้เลือกไฟล์ Excel ที่จะบันทึก")
-        return
-
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        df.to_excel(path, index=False)
-        st.success(f"บันทึกการแก้ไขลงไฟล์: {path.name} เรียบร้อยแล้ว")
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
-
-
-# =========================
-# Helper: รูป / QR
-# =========================
-def get_image_path_from_row(row: pd.Series) -> Path | None:
-    val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
-    if not val:
-        return None
-
-    p = Path(val)
-    if not p.is_absolute():
-        p = IMAGE_DIR / p.name
-    return p
-
-
-def save_uploaded_image(uploaded, asset_code: str) -> str:
-    suffix = Path(uploaded.name).suffix or ".png"
-    safe_code = asset_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
-    filename = f"{safe_code}{suffix}"
-    target_path = IMAGE_DIR / filename
-    with open(target_path, "wb") as f:
-        f.write(uploaded.getbuffer())
-    return filename
-
-
-def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
-    for col in ["_qr_image_path", "QR Code"]:
-        if col in row.index:
-            val = str(row.get(col, "") or "").strip()
-            if not val:
-                continue
-            p = Path(val)
-            if not p.is_absolute():
-                p2 = QR_IMAGES_DIR / p.name
-                if p2.exists():
-                    return p2
-            if p.exists():
-                return p
-    return None
-
-
-def generate_qr_bytes_for_url(url: str) -> bytes:
-    img = qrcode.make(url)
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf.getvalue()
-
-
-# =========================
-# หน้า Landing
-# =========================
-def landing_page():
-    set_landing_style()
-
-    st.markdown('<div class="landing-container">', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class="landing-badge">
-            ระบบบริหารจัดการครุภัณฑ์เครื่องมือแพทย์ & ห้องปฏิบัติการ
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        """
-        <div class="landing-title">
-            บริหารเครื่องมือแพทย์อย่างมืออาชีพ เพื่อผลการตรวจที่แม่นยำและ<br>
-            ปลอดภัย แบบ <span class="landing-highlight">Real-time</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        """
-        <div class="landing-sub">
-            จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม และข้อมูลห้องปฏิบัติการ 
-            ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ปุ่มอยู่กึ่งกลาง
-    col_left, col_mid, col_right = st.columns([1, 2, 1])
-    with col_mid:
-        st.markdown('<div class="landing-btn-primary">', unsafe_allow_html=True)
-        start_btn = st.button("เริ่มใช้งานระบบ")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown('<div style="margin-top:0.5rem;"></div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="landing-btn-outline">', unsafe_allow_html=True)
-        login_btn = st.button("เข้าสู่ระบบ")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown(
-            '<div class="landing-note">สำหรับเจ้าหน้าที่ที่ได้รับสิทธิ์ใช้งานห้องปฏิบัติการเท่านั้น</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)  # ปิด landing-container
-
-    # ถ้ากดปุ่ม -> ไปหน้า login
-    if start_btn or login_btn:
-        st.session_state.view = "login"
         st.rerun()
-
-    # กล่องคุณสมบัติเด่น
-    st.markdown('<div class="landing-feature-wrapper">', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class="landing-feature-card">
-            <div class="landing-feature-title">คุณสมบัติเด่นของระบบ</div>
-            <div class="landing-feature-sub">
-                ออกแบบมาสำหรับงานห้องปฏิบัติการทางการแพทย์ ใช้งานง่ายสำหรับเจ้าหน้าที่ และช่วยให้หัวหน้าหน่วยงานเห็นภาพรวมได้ชัดเจน
-            </div>
-            <div class="landing-feature-grid">
-                <div class="landing-feature-item">
-                    <div class="landing-feature-icon">📋</div>
-                    <div class="landing-feature-item-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
-                    <div class="landing-feature-item-text">
-                        เก็บข้อมูลเครื่องมือแพทย์แต่ละรายการ เช่น รุ่น หมายเลขเครื่อง Serial Number มูลค่า และสถานะการใช้งาน
-                    </div>
-                </div>
-                <div class="landing-feature-item">
-                    <div class="landing-feature-icon">🧾</div>
-                    <div class="landing-feature-item-title">QR Code เชื่อมโยงข้อมูลหน้างาน</div>
-                    <div class="landing-feature-item-text">
-                        ติด QR ที่อุปกรณ์และสแกนด้วยมือถือเพื่อเปิดหน้าข้อมูลครุภัณฑ์ แสดงรูป ประวัติ และสถานะการแจ้งซ่อมได้ทันที
-                    </div>
-                </div>
-                <div class="landing-feature-item">
-                    <div class="landing-feature-icon">📊</div>
-                    <div class="landing-feature-item-title">Dashboard สรุปภาพรวมแบบ Real-time</div>
-                    <div class="landing-feature-item-text">
-                        แสดงจำนวนครุภัณฑ์ตามสถานะ ห้องที่มีครุภัณฑ์มากที่สุด และข้อมูลที่ใช้เตรียมเอกสารตรวจประเมินมาตรฐานต่าง ๆ
-                    </div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    except Exception:
+        st.experimental_rerun()
 
 
-# =========================
-# หน้า Login
-# =========================
-def login_page():
-    set_login_style()
-
-    st.markdown('<div class="mem-login-title">เข้าสู่ระบบ</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="mem-login-sub">Medical Equipment Management System</div>',
-        unsafe_allow_html=True,
-    )
-
-    username = st.text_input("👤 ชื่อผู้ใช้", key="login_username")
-    password = st.text_input("🔐 รหัสผ่าน", type="password", key="login_password")
-
-    st.markdown('<div class="mem-login-btn">', unsafe_allow_html=True)
-    login_clicked = st.button("เข้าสู่ระบบ", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    back_clicked = st.button("⬅️ กลับไปหน้าแรก", use_container_width=True)
-
-    st.markdown(
-        '<div class="mem-login-footer">หากลืมรหัสผ่าน กรุณาติดต่อผู้ดูแลระบบ</div>',
-        unsafe_allow_html=True,
-    )
-
-    if back_clicked:
-        st.session_state.view = "landing"
-        st.session_state.logged_in = False
-        st.rerun()
-
-    if login_clicked:
-        ok, display_name = authenticate_user(username, password)
-        if ok:
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.session_state.display_name = display_name
-            st.session_state.view = "app"
-            st.rerun()
-        else:
-            st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
-
-
-# =========================
-# Helper: ใส่สไตล์ใน Altair chart
-# =========================
-def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
-    return (
-        chart.properties(width=width, height=height)
-        .configure_view(
-            stroke="#E5E7EB",
-            strokeWidth=1,
-            fill="#FFFFFF",
-        )
-    )
-
-
-# =========================
-# หน้า "หน้าหลัก" + Dashboard
-# =========================
-def page_home():
-    set_main_style()
-
-    st.markdown(
-        """
-        <div style="margin-bottom: 0.2rem;">
-            <div class="mem-page-title">หน้าหลัก</div>
-            <div class="mem-page-subtitle">
-                ภาพรวมการจัดการครุภัณฑ์ และเครื่องมือห้องปฏิบัติการ (ดึงข้อมูลจากไฟล์ Excel ที่เลือกอยู่)
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    df = load_equipment_data()
-    if df.empty:
-        st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
-        return
-
-    status_col = "สถานะ"
-    if status_col not in df.columns:
-        st.warning("ไม่พบคอลัมน์ 'สถานะ' ในไฟล์ Excel")
-        return
-
-    # --------- เตรียมข้อมูลสถานะ ---------
-    status_counts = (
-        df[status_col]
-        .fillna("ไม่ทราบสถานะ")
-        .value_counts()
-        .rename_axis("สถานะ")
-        .reset_index(name="count")
-    )
-
-    total = status_counts["count"].sum()
-    status_counts["percent"] = status_counts["count"] / max(total, 1)
-    status_counts["label_short"] = status_counts.apply(
-        lambda r: f"{r['percent']*100:.1f}%", axis=1
-    )
-
-    status_order = [
-        "พร้อมใช้งาน",
-        "ตรวจไม่พบ",
-        "ชำรุด(ซ่อมแซมได้)",
-        "ชำรุด(ซ่อมแซมไม่ได้)",
-        "ไม่ทราบสถานะ",
-    ]
-    color_map = {
-        "พร้อมใช้งาน": "#22c55e",
-        "ตรวจไม่พบ": "#9ca3af",
-        "ชำรุด(ซ่อมแซมได้)": "#f97316",
-        "ชำรุด(ซ่อมแซมไม่ได้)": "#ef4444",
-        "ไม่ทราบสถานะ": "#6b7280",
+def flash(text, typ="success"):
+    st.session_state["flash"] = {
+        "type": typ,
+        "text": text,
+        "until": time.time() + FLASH_SECONDS,
     }
-    status_counts["สถานะ"] = pd.Categorical(
-        status_counts["สถานะ"], categories=status_order, ordered=True
+
+
+def show_flash():
+    data = st.session_state.get("flash")
+    if not data:
+        return
+    if time.time() > data.get("until", 0):
+        st.session_state["flash"] = None
+        return
+    st.markdown(
+        f'<div class="flash {data.get("type","success")}">{data.get("text","")}</div>',
+        unsafe_allow_html=True,
     )
 
-    alt_color_scale = alt.Scale(
-        domain=list(color_map.keys()),
-        range=[color_map[k] for k in color_map.keys()],
+
+def compute_bag(total: int, max_cap=BAG_MAX):
+    t = max(0, int(total))
+    if t <= CRITICAL_MAX:
+        status, label = "red", "วิกฤตใกล้หมด"
+    elif t <= YELLOW_MAX:
+        status, label = "yellow", "เพียงพอ"
+    else:
+        status, label = "green", "ปกติ"
+    pct = max(0, min(100, int(round(100 * min(t, max_cap) / max_cap))))
+    return status, label, pct
+
+
+def bag_color(status: str) -> str:
+    return {"green": "#22c55e", "yellow": "#f59e0b", "red": "#ef4444"}[status]
+
+
+def normalize_products(rows):
+    """สรุปจำนวนหน่วยตาม product_type จากข้อมูลใน db.get_stock_by_blood()"""
+    d = {name: 0 for name in ALL_PRODUCTS_UI}
+    for r in rows:
+        name = str(r.get("product_type", "")).strip()
+        ui = RENAME_TO_UI.get(name, name)
+        if ui in d and ui != "Cryo":
+            d[ui] += int(r.get("units", 0))
+    return d
+
+
+def get_global_cryo():
+    total = 0
+    for bt in ["A", "B", "O", "AB"]:
+        rows = get_stock_by_blood(bt)
+        for r in rows:
+            name = str(r.get("product_type", "")).strip()
+            ui = RENAME_TO_UI.get(name, name)
+            if ui != "Cryo":
+                total += int(r.get("units", 0))
+    return total
+
+# ===== SVG: ถุงเลือด + คลื่นน้ำ 2 ชั้น =====
+def bag_svg(blood_type: str, total: int) -> str:
+    status, _label, pct = compute_bag(total, BAG_MAX)
+    fill = bag_color(status)
+    letter_fill = {
+        "A": "#facc15",
+        "B": "#f472b6",
+        "O": "#60a5fa",
+        "AB": "#ffffff",
+    }.get(blood_type, "#ffffff")
+
+    inner_h = 148.0
+    inner_y0 = 40.0
+    water_h = inner_h * pct / 100.0
+    water_y = inner_y0 + (inner_h - water_h)
+    gid = f"g_{blood_type}"
+
+    base_y = 20.0
+    amp1 = 5 + 6 * (pct / 100.0)
+    amp2 = amp1 * 0.6
+
+    wave1_d = (
+        f"M0 {base_y:.1f} "
+        f"Q20 {base_y-amp1:.1f} 40 {base_y:.1f} "
+        f"T80 {base_y:.1f} T120 {base_y:.1f} T160 {base_y:.1f} "
+        "V40 H0 Z"
+    )
+    wave2_d = (
+        f"M0 {base_y+2:.1f} "
+        f"Q20 {base_y+2-amp2:.1f} 40 {base_y+2:.1f} "
+        f"T80 {base_y+2:.1f} T120 {base_y+2:.1f} T160 {base_y+2:.1f} "
+        "V42 H0 Z"
     )
 
-    # --------- ข้อมูลตามสถานที่ใช้งาน ---------
-    loc_col = "สถานที่ใช้งาน (ปัจจุบัน)"
-    loc_total = 0
-    top_loc_name = "ไม่พบข้อมูล"
-    top_loc_count = 0
-    loc_counts = pd.DataFrame(columns=["สถานที่ใช้งาน", "count"])
+    wave_speed1 = 5.0
+    wave_speed2 = 7.5
 
-    if loc_col in df.columns:
-        loc_series = df[loc_col].dropna()
-        if not loc_series.empty:
-            loc_counts = (
-                loc_series.value_counts()
-                .rename_axis("สถานที่ใช้งาน")
-                .reset_index(name="count")
-            )
-            loc_total = int(loc_counts["สถานที่ใช้งาน"].nunique())
-            top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
-            top_loc_count = int(loc_counts.iloc[0]["count"])
+    # ถ้า total = 0 ให้น้ำอยู่ต่ำสุด (แทบมองไม่เห็น)
+    if total <= 0:
+        water_y = inner_y0 + inner_h - 1
 
-    # --------- SUMMARY ตัวเลข (Hero Card) ---------
-    def get_count(label: str) -> int:
+    return f"""
+<div>
+  <style>
+    .bag-wrap{{display:flex;flex-direction:column;align-items:center;gap:10px;
+               font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial}}
+    .bag{{transition:transform .18s ease, filter .18s ease}}
+    .bag:hover{{transform:translateY(-2px);
+                filter:drop-shadow(0 10px 22px rgba(0,0,0,.12));}}
+    .wave-layer{{mix-blend-mode:screen;opacity:.92}}
+    @keyframes wave-move-1{{0%{{transform:translateX(0);}}
+                            100%{{transform:translateX(-80px);}}}}
+    @keyframes wave-move-2{{0%{{transform:translateX(0);}}
+                            100%{{transform:translateX(-60px);}}}}
+  </style>
+  <div class="bag-wrap">
+    <svg class="bag" width="170" height="230" viewBox="0 0 168 206"
+         xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <clipPath id="clip-{gid}">
+          <path d="M24,40 C24,24 38,14 58,14 L110,14 C130,14 144,24 144,40
+                   L144,172 C144,191 128,202 108,204 L56,204 C36,202 24,191 24,172 Z"/>
+        </clipPath>
+        <linearGradient id="liquid-{gid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="{fill}" stop-opacity=".98"/>
+          <stop offset="55%" stop-color="{fill}" stop-opacity=".94"/>
+          <stop offset="100%" stop-color="{fill}" stop-opacity=".88"/>
+        </linearGradient>
+        <linearGradient id="liquid-soft-{gid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="{fill}" stop-opacity=".75"/>
+          <stop offset="100%" stop-color="{fill}" stop-opacity=".6"/>
+        </linearGradient>
+        <path id="wave1-{gid}" d="{wave1_d}" />
+        <path id="wave2-{gid}" d="{wave2_d}" />
+      </defs>
+
+      <!-- หูถุง -->
+      <circle cx="84" cy="10" r="7.5"
+              fill="#eef2ff" stroke="#dbe0ea" stroke-width="3"/>
+      <rect x="77.5" y="14" width="13" height="8" rx="3" fill="#e5e7eb"/>
+
+      <!-- ตัวถุง -->
+      <path d="M16,34 C16,18 32,8 52,8 L116,8 C136,8 152,18 152,34
+               L152,176 C152,195 136,206 116,206 L52,206 C32,206 16,195 16,176 Z"
+            fill="#ffffff" stroke="#800000" stroke-width="3"/>
+
+      <!-- ของเหลว + คลื่น -->
+      <g clip-path="url(#clip-{gid})">
+        <g transform="translate(24,{water_y:.1f})">
+          <!-- ชั้นคลื่นหลัก -->
+          <g class="wave-layer" style="animation:wave-move-1 {wave_speed1}s linear infinite;">
+            <use href="#wave1-{gid}" fill="url(#liquid-{gid})" x="0"/>
+            <use href="#wave1-{gid}" fill="url(#liquid-{gid})" x="80"/>
+            <use href="#wave1-{gid}" fill="url(#liquid-{gid})" x="160"/>
+          </g>
+          <!-- ชั้นคลื่นรอง -->
+          <g class="wave-layer" style="animation:wave-move-2 {wave_speed2}s linear infinite;">
+            <use href="#wave2-{gid}" fill="url(#liquid-soft-{gid})" x="0"/>
+            <use href="#wave2-{gid}" fill="url(#liquid-soft-{gid})" x="80"/>
+            <use href="#wave2-{gid}" fill="url(#liquid-soft-{gid})" x="160"/>
+          </g>
+          <!-- น้ำส่วนล่าง -->
+          <rect y="{base_y+4:.1f}" width="220" height="220" fill="url(#liquid-{gid})"/>
+        </g>
+      </g>
+
+      <!-- ป้าย max -->
+      <rect x="98" y="24" rx="10" ry="10" width="54" height="22"
+            fill="#ffffff" stroke="#e5e7eb"/>
+      <text x="125" y="40" text-anchor="middle"
+            font-size="12" fill="#374151">{BAG_MAX} max</text>
+
+      <!-- ตัวอักษรกำกับกรุ๊ปเลือด -->
+      <text x="84" y="126" text-anchor="middle" font-size="32" font-weight="900"
+            style="paint-order: stroke fill"
+            stroke="#111827" stroke-width="4"
+            fill="{letter_fill}">{blood_type}</text>
+    </svg>
+  </div>
+</div>
+"""
+
+# --------------------------------
+# INIT DB
+# --------------------------------
+if not os.path.exists(os.environ.get("BLOOD_DB_PATH", "blood.db")):
+    init_db()
+
+# --------------------------------
+# DB UTIL
+# --------------------------------
+def totals_overview():
+    ov = get_all_status()
+    return {d["blood_type"]: int(d.get("total", 0)) for d in ov}
+
+
+def products_of(bt):
+    return normalize_products(get_stock_by_blood(bt))
+
+
+def apply_stock_change(group, component_ui, qty, note, actor):
+    if component_ui == "Cryo":
+        raise ValueError("Cryo cannot be directly adjusted.")
+    adjust_stock(group, UI_TO_DB[component_ui], qty, actor=actor, note=note)
+
+
+def add_activity(action, bt, product_ui, qty, note):
+    st.session_state["activity"].insert(
+        0,
+        {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "action": action,
+            "blood_type": bt,
+            "product": product_ui,
+            "qty": int(qty),
+            "by": (st.session_state.get("username") or "staff"),
+            "note": note or "",
+        },
+    )
+
+
+def auto_update_booking_to_release():
+    df = st.session_state["entries"]
+    if df.empty:
+        return
+    today = date.today()
+    updated_any = False
+    for i, row in df.iterrows():
         try:
-            return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
+            if str(row.get("Status", "")) == "จอง":
+                d = pd.to_datetime(row.get("created_at", ""), errors="coerce")
+                if pd.isna(d):
+                    continue
+                if (today - d.date()).days >= 3:
+                    df.at[i, "Status"] = "หลุดจอง"
+                    df.at[i, "สถานะ(สี)"] = STATUS_COLOR["หลุดจอง"]
+                    updated_any = True
         except Exception:
-            return 0
+            pass
+    if updated_any:
+        st.session_state["entries"] = df
 
-    cnt_total = int(total)
-    cnt_ready = get_count("พร้อมใช้งาน")
-    cnt_repairable = get_count("ชำรุด(ซ่อมแซมได้)")
-    cnt_unrepairable = get_count("ชำรุด(ซ่อมแซมไม่ได้)")
-    cnt_missing = get_count("ตรวจไม่พบ")
+# --------------------------------
+# EXPIRY UTIL
+# --------------------------------
+def left_days_safe(d):
+    try:
+        if pd.isna(d):
+            return None
+    except Exception:
+        pass
+    if isinstance(d, str):
+        d2 = pd.to_datetime(d, errors="coerce")
+        if pd.isna(d2):
+            return None
+        d = d2.date()
+    elif isinstance(d, (datetime, pd.Timestamp)):
+        d = d.date()
+    elif not isinstance(d, date):
+        return None
+    return (d - date.today()).days
 
-    legend_items = [
-        ("พร้อมใช้งาน", color_map["พร้อมใช้งาน"]),
-        ("ตรวจไม่พบ", color_map["ตรวจไม่พบ"]),
-        ("ชำรุด (ซ่อมแซมได้)", color_map["ชำรุด(ซ่อมแซมได้)"]),
-        ("ชำรุด (ซ่อมแซมไม่ได้)", color_map["ชำรุด(ซ่อมแซมไม่ได้)"]),
-        ("ไม่ทราบสถานะ", color_map["ไม่ทราบสถานะ"]),
-    ]
-    legend_html_parts = []
-    for label, color in legend_items:
-        legend_html_parts.append(
-            f'<div class="mem-status-legend-item">'
-            f'<span class="mem-status-dot" style="background:{color};"></span>'
-            f'<span>{label}</span>'
-            f'</div>'
-        )
-    legend_html = "".join(legend_html_parts)
 
-    hero_html = (
-        '<div class="mem-hero">'
-        '<div class="mem-hero-title">จำนวนครุภัณฑ์</div>'
-        '<div class="mem-hero-sub">'
-        'สรุปจำนวนครุภัณฑ์ทั้งหมด แยกตามสถานะ และจำนวนตามสถานที่ใช้งานจากข้อมูลล่าสุดในระบบ'
-        '</div>'
-        '<div class="mem-hero-metrics">'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">รวมครุภัณฑ์ทั้งหมด</div>'
-        f'<div class="mem-hero-metric-value">{cnt_total}</div>'
-        '<span class="mem-hero-metric-pill">ทั้งหมด</span>'
-        '</div>'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">พร้อมใช้งาน</div>'
-        f'<div class="mem-hero-metric-value">{cnt_ready}</div>'
-        '<span class="mem-hero-metric-pill" '
-        'style="background:#dcfce7;color:#166534;">สถานะดี</span>'
-        '</div>'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมได้)</div>'
-        f'<div class="mem-hero-metric-value">{cnt_repairable}</div>'
-        '<span class="mem-hero-metric-pill" '
-        'style="background:#ffedd5;color:#9a3412;">ต้องซ่อมแซม</span>'
-        '</div>'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">ชำรุด (ซ่อมแซมไม่ได้)</div>'
-        f'<div class="mem-hero-metric-value">{cnt_unrepairable}</div>'
-        '<span class="mem-hero-metric-pill" '
-        'style="background:#fee2e2;color:#991b1b;">พิจารณาจัดหาใหม่</span>'
-        '</div>'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">ตรวจไม่พบ / สูญหาย</div>'
-        f'<div class="mem-hero-metric-value">{cnt_missing}</div>'
-        '<span class="mem-hero-metric-pill" '
-        'style="background:#e5e7eb;color:#111827;">ติดตามตรวจสอบ</span>'
-        '</div>'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">จำนวนสถานที่ใช้งานทั้งหมด</div>'
-        f'<div class="mem-hero-metric-value">{loc_total}</div>'
-        '<span class="mem-hero-metric-pill">ตามไฟล์ Excel</span>'
-        '</div>'
-        f'<div class="mem-hero-metric">'
-        '<div class="mem-hero-metric-label">สถานที่ที่มีครุภัณฑ์มากที่สุด</div>'
-        f'<div class="mem-hero-metric-value" style="font-size:14px;">{top_loc_name}</div>'
-        f'<span class="mem-hero-metric-pill" '
-        'style="background:#cffafe;color:#0f766e;">'
-        f'{top_loc_count} รายการ</span>'
-        '</div>'
-        '</div>'
-        '<div class="mem-status-legend-wrapper"><div class="mem-status-legend">'
-        f'{legend_html}'
-        '</div></div>'
-        '</div>'
-    )
-    st.markdown(hero_html, unsafe_allow_html=True)
+def expiry_label(days: int | None) -> str:
+    if days is None:
+        return ""
+    if days < 0:
+        return "🔴 หมดอายุแล้ว"
+    if days <= 3:
+        return f"🔴 เร่งด่วน (เหลือ {days} วัน)"
+    if days == 4:
+        return "🔴 ใกล้ครบกำหนด (4 วัน)"
+    if 5 <= days <= 10:
+        return f"🟠 เตือนล่วงหน้า (เหลือ {days} วัน)"
+    if days > 8:
+        return "🟢 ปกติ"
+    return f"🟠 เตือนล่วงหน้า (เหลือ {days} วัน)"
 
-    # --------- PIE CHART (Donut) + ตาราง ---------
-    base_pie = (
-        alt.Chart(status_counts)
-        .encode(
-            theta=alt.Theta("count:Q", stack=True),
-            color=alt.Color(
-                "สถานะ:N",
-                scale=alt_color_scale,
-                legend=alt.Legend(title="สถานะ"),
-            ),
-            tooltip=[
-                alt.Tooltip("สถานะ:N", title="สถานะ"),
-                alt.Tooltip("count:Q", title="จำนวน"),
-                alt.Tooltip("percent:Q", title="สัดส่วน", format=".1%"),
-            ],
-        )
+
+def render_minimal_banner(df):
+    if df.empty:
+        return
+    n_warn = int(((df["_exp_days"].notna()) & (df["_exp_days"] <= 10) & (df["_exp_days"] >= 5)).sum())
+    n_red = int(((df["_exp_days"].notna()) & (df["_exp_days"] <= 4) & (df["_exp_days"] >= 0)).sum())
+    n_exp = int(((df["_exp_days"].notna()) & (df["_exp_days"] < 0)).sum())
+    if (n_warn + n_red + n_exp) == 0:
+        return
+    st.markdown(
+        f"""<div id="expiry-banner"><div class="title">
+        ⏰ สถานะวันหมดอายุ — 
+        <span class="chip warn">เตือน {n_warn}</span>
+        <span class="chip">วิกฤต {n_red+n_exp}</span></div></div>""",
+        unsafe_allow_html=True,
     )
 
-    pie = base_pie.mark_arc(
-        outerRadius=150,
-        innerRadius=70,
-        stroke="white",
-        strokeWidth=2,
-    )
-
-    labels = (
-        base_pie.mark_text(radius=110, size=13, color="#111827", fontWeight="bold")
-        .encode(text="label_short:N")
-    )
-
-    pie_chart = styled_chart(pie + labels, width=420, height=320)
-
-    status_table_df = status_counts.sort_values("สถานะ").copy()
-    status_table_df = status_table_df[["สถานะ", "count"]]
-    status_table_df.rename(columns={"count": "จำนวน (รายการ)"}, inplace=True)
-
+# --------------------------------
+# LANDING & LOGIN PAGES (ใหม่)
+# --------------------------------
+def render_landing_page():
+    """หน้า Landing ก่อนล็อกอิน"""
     st.markdown(
         """
-        <div class="mem-card">
-            <div class="mem-card-title">สัดส่วนตามสถานะครุภัณฑ์</div>
-            <div class="mem-card-subtitle">
-                แสดงสัดส่วนและจำนวนครุภัณฑ์แต่ละสถานะ ช่วยให้เห็นภาพรวมความพร้อมใช้งานของครุภัณฑ์ทั้งหมด
-            </div>
+        <div class="landing-bg">
+          <div class="landing-grid">
+            <div>
+              <div class="landing-badge">
+                Blood Stock Real-time Monitor · สำหรับธนาคารเลือด / ห้อง Lab
+              </div>
+              <div class="landing-title">
+                ดูคลังเลือดแบบ Real-time<br/>
+                รู้ปริมาณสำรองและวันหมดอายุในหน้าเดียว
+              </div>
+              <div class="landing-subtitle">
+                หน้าจอเดียวสำหรับทีมธนาคารเลือดและห้อง Lab
+                เห็นคงเหลือของแต่ละกรุ๊ปและชนิดผลิตภัณฑ์ พร้อมระดับความเสี่ยงวันหมดอายุ
+              </div>
+              <ul class="landing-bullets">
+                <li>✔ แดชบอร์ดกรุ๊ปเลือด A / B / O / AB พร้อมระดับ Critical / Warning</li>
+                <li>✔ นำเข้าไฟล์ Excel / CSV จากระบบเดิมได้ทันที</li>
+                <li>✔ ใช้ติดตามและเตรียมเลือดสำหรับหอผู้ป่วยและห้องผ่าตัด</li>
+              </ul>
+              <div class="landing-stat-row">
+                <div class="landing-stat-chip">สำหรับทีมธนาคารเลือด / ห้อง Lab</div>
+                <div class="landing-stat-chip" style="background:#b91c1c;">เน้นความปลอดภัยของผู้ป่วย</div>
+                <div class="landing-stat-chip" style="background:#0f172a;">รองรับการ Audit ระบบคุณภาพ</div>
+              </div>
+              <div class="landing-cta">
         """,
         unsafe_allow_html=True,
     )
 
-    col_pie, col_table = st.columns([1, 1])
+    cta_col, _ = st.columns([1, 2])
+    with cta_col:
+        if st.button("เข้าสู่ระบบเพื่อเริ่มใช้งาน", type="primary", use_container_width=True):
+            st.session_state["page"] = "เข้าสู่ระบบ"
+            _safe_rerun()
 
-    with col_pie:
-        st.altair_chart(pie_chart, use_container_width=True)
+    st.markdown(
+        """
+              </div>
+            </div>
+            <div>
+              <img src="https://img.icons8.com/color/240/blood-bag.png" 
+                   style="display:block;margin:0 auto 10px auto;max-width:180px;">
+              <p style="text-align:center;font-weight:600;color:#b91c1c;">
+                เห็นคลังเลือดทั้งโรงพยาบาลแบบภาพรวม
+              </p>
+              <p style="text-align:center;font-size:.9rem;color:#4b5563;">
+                ช่วยวางแผนจัดการเลือดให้เพียงพอ ลดการหมดอายุก่อนใช้ และเตรียมพร้อมกรณีฉุกเฉิน
+              </p>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    with col_table:
-        st.markdown('<div class="mem-status-table">', unsafe_allow_html=True)
-        st.dataframe(
-            status_table_df,
-            hide_index=True,
-            use_container_width=True,
-        )
+    st.markdown("#### ตัวอย่างภาพรวมที่ระบบช่วยให้เห็นได้อย่างรวดเร็ว")
+    st.markdown(
+        """
+        <div class="landing-features">
+          <div style="padding:16px 18px;border-radius:18px;border:1px solid #e5e7eb;background:#ffffff;">
+            <div style="font-size:.86rem;color:#6b7280;">สถานะภาพรวมคลัง</div>
+            <div style="margin-top:4px;font-size:1.05rem;font-weight:800;color:#111827;">A / B / O / AB</div>
+            <div style="font-size:.9rem;color:#4b5563;margin-top:2px;">
+              แสดงปริมาณเลือดพร้อมสัญญาณไฟเตือนอัตโนมัติ
+            </div>
+          </div>
+          <div style="padding:16px 18px;border-radius:18px;border:1px solid #e5e7eb;background:#ffffff;">
+            <div style="font-size:.86rem;color:#6b7280;">การแจ้งเตือนวันหมดอายุ</div>
+            <div style="margin-top:4px;font-size:1.05rem;font-weight:800;color:#b91c1c;">Critical + Warning</div>
+            <div style="font-size:.9rem;color:#4b5563;margin-top:2px;">
+              เน้นถุงที่ต้องรีบใช้ก่อน ช่วยลดเลือดหมดอายุก่อนใช้งาน
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_login_page():
+    """หน้า Login ตรงกลางแบบ hero"""
+    st.markdown(
+        """
+        <div class="login-hero">
+          <div class="login-hero-grid">
+            <div class="login-left">
+              <div class="login-left-title">ระบบบริหารคลังเลือด โรงพยาบาล</div>
+              <div class="login-left-sub">
+                ดูปริมาณเลือดคงเหลือแยกตามกรุ๊ปและชนิดผลิตภัณฑ์ พร้อมระบบแจ้งเตือนวันหมดอายุ
+                ช่วยให้ทีมธนาคารเลือดและห้อง Lab ตัดสินใจได้อย่างรวดเร็วและปลอดภัย
+              </div>
+              <ul style="font-size:.9rem;line-height:1.45;">
+                <li>แดชบอร์ด Real-time สำหรับทีมธนาคารเลือด</li>
+                <li>นำเข้าไฟล์ Excel / CSV ได้</li>
+                <li>แจ้งเตือน Critical / Warning ชัดเจน</li>
+              </ul>
+              <div style="margin-top:12px;font-size:.8rem;background:rgba(15,23,42,.15);
+                          display:inline-flex;padding:.3rem .7rem;border-radius:999px;">
+                ข้อมูลเฉพาะภายในองค์กร · รองรับการ Audit & ระบบคุณภาพ
+              </div>
+            </div>
+            <div class="login-right">
+              <div class="login-right-title">เข้าสู่ระบบคลังเลือด</div>
+              <div class="login-right-sub">
+                Blood Stock Real-time Monitor สำหรับทีมธนาคารเลือดและห้อง Lab
+              </div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    spacer, center, _ = st.columns([1, 2, 1])
+    with center:
+        st.markdown('<div class="login-form-card">', unsafe_allow_html=True)
+        st.markdown("##### เข้าสู่ระบบใช้งานระบบคลังเลือด")
+        with st.form("login_form_main", clear_on_submit=False):
+            u = st.text_input("ชื่อผู้ใช้ (Username)", placeholder="เช่น bloodbank01 หรือชื่อย่อของคุณ")
+            p = st.text_input("รหัสผ่าน (Password)", type="password", placeholder="ทดลองใช้: 1234")
+            st.caption("* เวอร์ชันทดลองใช้ ใช้รหัสผ่าน 1234 สำหรับเข้าใช้งาน")
+            sub = st.form_submit_button("เข้าสู่ระบบ", type="primary", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # --------- HERO CARD ที่ 2: แสดง Top สถานที่ ---------
-    if not loc_counts.empty:
-        metric_parts = []
-        for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
-            name = str(r["สถานที่ใช้งาน"])
-            cnt = int(r["count"])
-            metric_parts.append(
-                '<div class="mem-hero-metric">'
-                f'<div class="mem-hero-metric-label">{name}</div>'
-                f'<div class="mem-hero-metric-value">{cnt}</div>'
-                f'<span class="mem-hero-metric-pill">อันดับ {rank}</span>'
-                '</div>'
-            )
-
-        loc_hero_html = (
-            '<div class="mem-hero">'
-            '<div class="mem-hero-title">สถานที่ที่มีครุภัณฑ์ในระบบ</div>'
-            '<div class="mem-hero-sub">'
-            'แสดงอันดับสถานที่ที่มีจำนวนครุภัณฑ์มากที่สุด จากข้อมูลในตารางรายการครุภัณฑ์ปัจจุบัน'
-            '</div>'
-            '<div class="mem-hero-metrics">'
-            + "".join(metric_parts)
-            + "</div></div>"
-        )
-        st.markdown(loc_hero_html, unsafe_allow_html=True)
-
-
-# =========================
-# Helper: ตาราง + เลือกแถว (สำหรับลบ)
-# =========================
-def equipment_table_with_selection(df: pd.DataFrame):
-    df_with_sel = df.copy()
-    if "เลือก" not in df_with_sel.columns:
-        df_with_sel.insert(0, "เลือก", False)
-
-    edited_df = st.data_editor(
-        df_with_sel,
-        key="equip_table",
-        use_container_width=True,
-        height=280,
-        hide_index=True,
-        column_config={
-            "เลือก": st.column_config.CheckboxColumn(
-                "เลือก", help="ติ๊กเลือกครุภัณฑ์เพื่อใช้สำหรับลบหลายรายการ"
-            )
-        },
-        disabled=[c for c in df_with_sel.columns if c != "เลือก"],
-    )
-
-    selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
-    st.session_state["rows_for_delete"] = selected_rows
-
-
-# =========================
-# หน้า "รายการครุภัณฑ์"
-# =========================
-def page_equipment_list():
-    set_main_style()
-    st.markdown(
-        '<div class="mem-page-title">รายการครุภัณฑ์</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("### เลือกไฟล์ Excel ที่ต้องการใช้งาน")
-
-    files = get_available_excel_files()
-    init_excel_file_name()
-    current_name = st.session_state.get("excel_file_name")
-
-    if not files and not DEFAULT_EXCEL_PATH.exists():
-        st.info("ยังไม่มีไฟล์ Excel ในโฟลเดอร์ data กรุณาอัปโหลดไฟล์ใหม่")
-    else:
-        if current_name not in files and DEFAULT_EXCEL_PATH.exists():
-            current_name = DEFAULT_EXCEL_NAME
-            st.session_state["excel_file_name"] = current_name
-        elif current_name not in files and files:
-            current_name = files[0]
-            st.session_state["excel_file_name"] = current_name
-
-        if files:
-            idx_default = files.index(current_name)
-            selected_file = st.selectbox(
-                "ไฟล์สำหรับใช้งาน",
-                options=files,
-                index=idx_default,
-                key="excel_select",
-            )
-
-            col_use, col_path = st.columns([1, 1])
-            with col_use:
-                if st.button("ใช้ไฟล์นี้", key="btn_use_excel"):
-                    st.session_state["excel_file_name"] = selected_file
-                    st.success(f"กำลังใช้งานไฟล์: {selected_file}")
-                    st.rerun()
-            with col_path:
-                path = DATA_DIR / current_name
-                st.caption(f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`")
-
-    with st.expander("📁 อัปโหลดไฟล์ Excel ใหม่ (เพิ่ม/แทนที่ไฟล์เดิม)", expanded=False):
-        uploaded = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"])
-        if uploaded is not None:
-            save_path = DATA_DIR / uploaded.name
-            try:
-                DATA_DIR.mkdir(parents=True, exist_ok=True)
-                with open(save_path, "wb") as f:
-                    f.write(uploaded.getbuffer())
-                st.success(f"บันทึกไฟล์ {uploaded.name} ลงโฟลเดอร์ data แล้ว")
-
-                st.session_state["excel_file_name"] = uploaded.name
-                st.rerun()
-            except Exception as e:
-                st.error(f"ไม่สามารถบันทึกไฟล์ได้: {e}")
-
-    df = load_equipment_data()
-    if df.empty:
-        st.info("ยังไม่มีข้อมูลในไฟล์ Excel ที่เลือกอยู่")
-        return
-
-    st.markdown("### ตารางรายการครุภัณฑ์")
-    equipment_table_with_selection(df)
-
-    # ---------- ปุ่มลบข้อมูล ----------
-    st.markdown("#### จัดการลบข้อมูล")
-    col_del1, col_del2 = st.columns([1, 1.2])
-
-    with col_del1:
-        if st.button("🗑️ ลบรายการที่เลือก", use_container_width=True):
-            rows = st.session_state.get("rows_for_delete", [])
-            if not rows:
-                st.warning("กรุณาติ๊กเลือกอย่างน้อย 1 รายการในคอลัมน์ 'เลือก' ก่อนลบ")
+        if sub:
+            if p == AUTH_PASSWORD:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = (u or "").strip() or "staff"
+                st.session_state["page"] = "กรอกเลือด"
+                flash("เข้าสู่ระบบสำเร็จ ✅")
+                _safe_rerun()
             else:
-                df_new = df.drop(index=rows).reset_index(drop=True)
-                save_equipment_data(df_new)
-                st.session_state["selected_row_idx"] = 0
-                st.success(f"ลบ {len(rows)} รายการเรียบร้อยแล้ว")
-                st.rerun()
+                st.error("รหัสผ่านไม่ถูกต้อง (password = 1234)")
 
-    with col_del2:
-        confirm_all = st.checkbox(
-            "ยืนยันการลบข้อมูลทั้งหมดในตาราง", key="confirm_delete_all"
-        )
-        if st.button("🧹 ลบข้อมูลทั้งหมด", use_container_width=True):
-            if not confirm_all:
-                st.warning("กรุณาติ๊ก 'ยืนยันการลบข้อมูลทั้งหมดในตาราง' ก่อนลบทั้งหมด")
-            else:
-                df_new = df.iloc[0:0]
-                save_equipment_data(df_new)
-                st.session_state["selected_row_idx"] = 0
-                st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
-                st.rerun()
-
-    # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
-    def format_option(i: int) -> str:
-        row = df.iloc[i]
-        name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
-        code = str(row.get(ASSET_CODE_COL, ""))
-        return f"{i+1:03d} - {name} ({code})"
-
-    options_index = list(df.index)
-    default_idx = st.session_state.get("selected_row_idx", 0)
-    if default_idx >= len(df):
-        default_idx = 0
-
-    selected_idx_box = st.selectbox(
-        "เลือกครุภัณฑ์สำหรับดู/แก้ไขรายละเอียด",
-        options=options_index,
-        index=default_idx,
-        format_func=format_option,
-        key="equip_select_box_admin",
+    st.caption(
+        "หากคุณไม่ใช่เจ้าหน้าที่ที่ได้รับอนุญาต กรุณาออกจากหน้านี้เพื่อรักษาความลับข้อมูลภายในโรงพยาบาล"
     )
 
-    if selected_idx_box != st.session_state.get("selected_row_idx", 0):
-        st.session_state.selected_row_idx = selected_idx_box
-        st.rerun()
-
-    selected_idx = st.session_state.get("selected_row_idx", 0)
-
-    st.markdown("### รายละเอียดครุภัณฑ์")
-    st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
-
-    if len(df) == 0:
-        st.info("ยังไม่มีข้อมูลให้แสดง")
-        return
-
-    row = df.iloc[selected_idx].copy()
-    asset_code = str(row.get(ASSET_CODE_COL, ""))
-
-    # ---- ฟิลด์หลัก (ยกเว้น สถานะแจ้งซ่อม + รูปภาพครุภัณฑ์ ที่จัดส่วนต่างหาก) ----
-    columns_list = [
-        c
-        for c in df.columns
-        if c not in ("รูปภาพครุภัณฑ์", "สถานะแจ้งซ่อม")
-    ]
-
-    half = (len(columns_list) + 1) // 2
-    left_cols = columns_list[:half]
-    right_cols = columns_list[half:]
-
-    col_left, col_right = st.columns(2)
-    updated_values: dict[str, str] = {}
-
-    with col_left:
-        for col_name in left_cols:
-            current_val = row.get(col_name, "")
-            new_val = st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"detail_left_{col_name}_{selected_idx}",
-            )
-            updated_values[col_name] = new_val
-
-    with col_right:
-        for col_name in right_cols:
-            current_val = row.get(col_name, "")
-            new_val = st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"detail_right_{col_name}_{selected_idx}",
-            )
-            updated_values[col_name] = new_val
-
-    # ---- ส่วนสถานะแจ้งซ่อม ----
-    st.markdown("### สถานะแจ้งซ่อม")
-    current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
-    if current_maint not in MAINT_STATUS_CHOICES:
-        current_maint = MAINT_STATUS_CHOICES[0]
-
-    maint_select = st.selectbox(
-        "สถานะแจ้งซ่อม",
-        MAINT_STATUS_CHOICES,
-        index=MAINT_STATUS_CHOICES.index(current_maint),
-        key=f"maint_status_admin_{selected_idx}",
-    )
-    updated_values["สถานะแจ้งซ่อม"] = maint_select
-
-    # ---- ส่วน QR + รูปภาพ ----
-    st.markdown("### QR Code และรูปภาพครุภัณฑ์")
-    qr_col, img_col = st.columns([1, 1])
-
-    with qr_col:
-        st.subheader("QR Code ของครุภัณฑ์")
-        qr_path = get_qr_image_path_from_row(row)
-        qr_bytes_for_download = None
-
-        if qr_path and qr_path.exists():
-            st.image(str(qr_path), use_column_width=True)
-            with open(qr_path, "rb") as f:
-                qr_bytes_for_download = f.read()
-        else:
-            # URL ของเว็บ QR ที่เปิดหลังสแกน
-            url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
-            qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
-            st.image(qr_bytes_for_download, use_column_width=True)
-
-        st.caption(asset_code)
-        st.write(
-            "สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน"
-        )
-
-        if qr_bytes_for_download:
-            st.download_button(
-                "⬇️ ดาวน์โหลด QR (PNG)",
-                data=qr_bytes_for_download,
-                file_name=f"{asset_code}_qr.png",
-                mime="image/png",
-                use_container_width=True,
-            )
-
-    with img_col:
-        st.subheader("รูปภาพครุภัณฑ์")
-        current_img_path = get_image_path_from_row(row)
-        if current_img_path and current_img_path.exists():
-            st.image(str(current_img_path), caption="รูปภาพปัจจุบัน", use_column_width=True)
-        else:
-            st.info("ยังไม่มีรูปภาพสำหรับรายการนี้")
-
-        uploaded_img = st.file_uploader(
-            "อัปโหลดรูปภาพใหม่ (ถ้าไม่เลือก ระบบจะใช้ของเดิม)",
-            type=["png", "jpg", "jpeg"],
-            key=f"upload_image_admin_{selected_idx}",
-        )
-
-    st.write("")
-    if st.button("บันทึกการแก้ไข", type="primary"):
-        df_current = load_equipment_data()
-        if selected_idx >= len(df_current):
-            st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
-            return
-
-        # อัปเดตค่าฟิลด์ทั้งหมดตาม updated_values
-        for col in updated_values:
-            if col not in df_current.columns:
-                continue
-            raw_val = updated_values.get(col, "")
-            orig_dtype = df_current[col].dtype
-
-            if pd.api.types.is_numeric_dtype(orig_dtype):
-                if raw_val == "":
-                    df_current.at[selected_idx, col] = pd.NA
-                else:
-                    try:
-                        df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
-                    except Exception:
-                        df_current.at[selected_idx, col] = raw_val
-            else:
-                df_current.at[selected_idx, col] = raw_val
-
-        # ถ้าอัปโหลดรูปใหม่ -> เซฟและเก็บชื่อไฟล์ในคอลัมน์ "รูปภาพครุภัณฑ์"
-        if uploaded_img is not None:
-            filename = save_uploaded_image(uploaded_img, asset_code)
-            if "รูปภาพครุภัณฑ์" not in df_current.columns:
-                df_current["รูปภาพครุภัณฑ์"] = ""
-            df_current.at[selected_idx, "รูปภาพครุภัณฑ์"] = filename
-
-        save_equipment_data(df_current)
-        st.rerun()
-
-
-# =========================
-# หน้า "แจ้งซ่อม / บำรุงรักษา"
-# =========================
-def page_maintenance():
-    set_main_style()
-    st.markdown(
-        '<div class="mem-page-title">แจ้งซ่อม / บำรุงรักษา</div>',
-        unsafe_allow_html=True,
-    )
-
-    df = load_equipment_data()
-    if df.empty:
-        st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
-        return
-
-    if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
-        return
-
-    maint_counts = (
-        df["สถานะแจ้งซ่อม"]
-        .fillna(MAINT_STATUS_CHOICES[0])
-        .value_counts()
-        .rename_axis("สถานะแจ้งซ่อม")
-        .reset_index(name="count")
-    )
-
-    st.markdown(
-        """
-        <div class="mem-card">
-            <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
-            <div class="mem-card-subtitle">
-                แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม เพื่อช่วยติดตามงานซ่อมบำรุง
-            </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    chart = (
-        alt.Chart(maint_counts)
-        .mark_bar()
-        .encode(
-            x=alt.X("สถานะแจ้งซ่อม:N", sort=None, title="สถานะแจ้งซ่อม"),
-            y=alt.Y("count:Q", title="จำนวน (รายการ)"),
-            tooltip=["สถานะแจ้งซ่อม:N", "count:Q"],
-        )
-    )
-    chart = styled_chart(chart, width=500, height=320)
-    st.altair_chart(chart, use_container_width=True)
-
-    st.dataframe(
-        maint_counts.rename(columns={"count": "จำนวน (รายการ)"}),
-        hide_index=True,
-        use_container_width=True,
-    )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# =========================
-# หน้า "รายงานสรุป"
-# =========================
-def page_summary():
-    set_main_style()
-    st.markdown(
-        '<div class="mem-page-title">รายงานสรุป</div>',
-        unsafe_allow_html=True,
-    )
-    st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
-
-
-# =========================
-# MAIN APP หลัง Login
-# =========================
-def main_app():
-    set_main_style()
-
-    with st.sidebar:
+# --------------------------------
+# SIDEBAR
+# --------------------------------
+with st.sidebar:
+    if st.session_state.get("logged_in"):
+        name = (st.session_state.get("username") or "staff").strip()
+        initials = (name[:2] or "ST").upper()
         st.markdown(
             f"""
-            <div class="mem-sidebar-user">
-              <div style="font-size:28px; font-weight:700; margin-bottom:4px;">AD</div>
-              <div class="mem-sidebar-user-name">{st.session_state.get('display_name', 'admin')}</div>
-              <div class="mem-sidebar-user-sub">เข้าสู่ระบบสำเร็จ</div>
+            <div class="user-card">
+              <div class="user-avatar">{initials}</div>
+              <div class="user-meta">
+                <span class="label">เข้าสู่ระบบสำเร็จ</span>
+                <span class="name">{name}</span>
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        st.markdown('<div class="mem-menu-title">เมนู</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">เมนู</div>', unsafe_allow_html=True)
+    if st.button("หน้าหลัก", key="nav_home", use_container_width=True):
+        st.session_state["page"] = "หน้าหลัก"
+        _safe_rerun()
+    if st.button("กรอกเลือด", key="nav_entry", use_container_width=True):
+        st.session_state["page"] = "กรอกเลือด"
+        _safe_rerun()
+    if st.button(
+        "เข้าสู่ระบบ" if not st.session_state["logged_in"] else "ออกจากระบบ",
+        key="nav_auth",
+        use_container_width=True,
+    ):
+        st.session_state["page"] = "เข้าสู่ระบบ" if not st.session_state["logged_in"] else "ออกจากระบบ"
+        _safe_rerun()
 
-        current_menu = st.session_state.get("current_menu", "หน้าหลัก")
+    # ย้าย login form ออกจาก sidebar แล้ว ไปอยู่หน้า "เข้าสู่ระบบ" แทน
+    # ส่วนออกจากระบบยังคงใช้เหมือนเดิม
+    if st.session_state["page"] == "ออกจากระบบ" and st.session_state["logged_in"]:
+        st.session_state["logged_in"] = False
+        st.session_state["username"] = ""
+        st.session_state["page"] = "หน้าหลัก"
+        _safe_rerun()
 
-        def menu_button(label: str):
-            is_active = current_menu == label
-            css_class = "mem-menu-btn-active" if is_active else "mem-menu-btn"
-            st.markdown(f'<div class="{css_class}">', unsafe_allow_html=True)
-            clicked = st.button(label, use_container_width=True, key=f"menu_{label}")
-            st.markdown("</div>", unsafe_allow_html=True)
-            return clicked
+# --------------------------------
+# HEADER
+# --------------------------------
+st.title("Blood Stock Real-time Monitor")
+st.caption(f"อัปเดต: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+show_flash()
 
-        if menu_button("หน้าหลัก"):
-            st.session_state.current_menu = "หน้าหลัก"
-            st.rerun()
-        if menu_button("รายการครุภัณฑ์"):
-            st.session_state.current_menu = "รายการครุภัณฑ์"
-            st.rerun()
-        if menu_button("แจ้งซ่อม / บำรุงรักษา"):
-            st.session_state.current_menu = "แจ้งซ่อม / บำรุงรักษา"
-            st.rerun()
-        if menu_button("รายงานสรุป"):
-            st.session_state.current_menu = "รายงานสรุป"
-            st.rerun()
-
-        st.write("")
-        if st.button("Logout", type="primary", use_container_width=True):
-            # เคลียร์ session แล้วกลับหน้า Landing
-            keep_keys = []
-            for k in list(st.session_state.keys()):
-                if k not in keep_keys:
-                    del st.session_state[k]
-            st.session_state.logged_in = False
-            st.session_state.view = "landing"
-            st.rerun()
-
-    menu = st.session_state.get("current_menu", "หน้าหลัก")
-
-    if menu == "หน้าหลัก":
-        page_home()
-    elif menu == "รายการครุภัณฑ์":
-        page_equipment_list()
-    elif menu == "แจ้งซ่อม / บำรุงรักษา":
-        page_maintenance()
-    elif menu == "รายงานสรุป":
-        page_summary()
-
-
-# =========================
-# ENTRY POINT
-# =========================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "view" not in st.session_state:
-    st.session_state.view = "landing"
-if "current_menu" not in st.session_state:
-    st.session_state.current_menu = "หน้าหลัก"
-if "selected_row_idx" not in st.session_state:
-    st.session_state.selected_row_idx = 0
-
-# ถ้าล็อกอินอยู่แล้ว รีเฟรชหน้าให้เข้า main_app เลย
-if st.session_state.logged_in:
-    main_app()
-else:
-    if st.session_state.view == "login":
-        login_page()
+# --------------------------------
+# PAGE: กรอกเลือด
+# --------------------------------
+if st.session_state["page"] == "กรอกเลือด":
+    if not st.session_state["logged_in"]:
+        st.warning("ต้องล็อกอินก่อนจึงจะใช้งานเมนูนี้ได้")
     else:
-        landing_page()
+        st.subheader("กรอกเลือด")
+
+        # ---- แบบฟอร์มกรอกทีละรายการ ----
+        with st.form("blood_entry_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                unit_number = st.text_input("Unit number")
+            with c2:
+                exp_date = st.date_input("Exp date", value=date.today())
+            c3, c4 = st.columns(2)
+            with c3:
+                group = st.selectbox("Group", ["A", "B", "O", "AB"])
+            with c4:
+                status = st.selectbox("Status", STATUS_OPTIONS, index=0)
+            c5, c6 = st.columns(2)
+            with c5:
+                component = st.selectbox("Blood Components", ["LPRC", "PRC", "FFP", "PC"])
+            with c6:
+                note = st.text_input("บันทึก")
+            submitted = st.form_submit_button("บันทึกรายการ", use_container_width=True)
+
+        if submitted:
+            new_row = {
+                "created_at": datetime.now().strftime("%Y/%m/%d"),
+                "Exp date": exp_date.strftime("%Y/%m/%d"),
+                "Unit number": unit_number,
+                "Group": group,
+                "Blood Components": component,
+                "Status": status,
+                "สถานะ(สี)": STATUS_COLOR.get(status, status),
+                "บันทึก": note,
+            }
+            st.session_state["entries"] = pd.concat(
+                [st.session_state["entries"], pd.DataFrame([new_row])],
+                ignore_index=True,
+            )
+            try:
+                if status in ["ว่าง", "หลุดจอง"]:
+                    apply_stock_change(
+                        group, component, +1, note or "inbound", st.session_state.get("username") or "admin"
+                    )
+                    add_activity("INBOUND", group, component, +1, note)
+                elif status in ["จ่ายแล้ว", "Exp"]:
+                    apply_stock_change(
+                        group, component, -1, note or status, st.session_state.get("username") or "admin"
+                    )
+                    add_activity("OUTBOUND", group, component, -1, note or status)
+                else:
+                    add_activity("BOOK", group, component, 0, "จอง (ไม่กระทบคลัง)")
+                flash("บันทึกรายการและอัปเดตคลังแล้ว ✅")
+            except Exception as e:
+                st.error(f"ปรับคลังไม่สำเร็จ: {e}")
+            _safe_rerun()
+
+        # ---- นำเข้า Excel / CSV ----
+        st.markdown("### 📁 นำเข้าจาก Excel/CSV (อัปโหลดแล้วลงตารางอัตโนมัติ)")
+        up = st.file_uploader("เลือกไฟล์ (.xlsx, .xls, .csv)", type=["xlsx", "xls", "csv"], key="uploader_file")
+        mode_merge = st.radio(
+            "โหมดนำเข้า",
+            ["รวมกับตาราง (merge/update)", "แทนที่ทั้งหมด (replace)"],
+            horizontal=True,
+            index=0,
+            key="uploader_mode",
+        )
+
+        if up is not None:
+            # token ไฟล์เพื่อกันนำเข้าซ้ำทุกครั้งที่มี rerun
+            token = (up.name, up.size)
+            if st.session_state.get("last_upload_token") != token:
+                st.session_state["last_upload_token"] = token
+
+                # อ่านไฟล์
+                try:
+                    if up.name.lower().endswith(".csv"):
+                        df_file = pd.read_csv(up)
+                    else:
+                        try:
+                            df_file = pd.read_excel(up)
+                        except Exception as e:
+                            st.error(
+                                "อ่าน Excel ไม่ได้ (อาจขาด openpyxl). "
+                                "แนะนำเพิ่ม openpyxl ใน requirements.txt หรืออัปโหลด CSV แทน"
+                            )
+                            st.info(str(e))
+                            df_file = pd.DataFrame()
+
+                    if not df_file.empty:
+                        # mapping header ให้มาตรงกับคอลัมน์หลัก
+                        col_map = {
+                            "created_at": "created_at",
+                            "Created": "created_at",
+                            "Created at": "created_at",
+                            "Exp date": "Exp date",
+                            "Exp": "Exp date",
+                            "exp_date": "Exp date",
+                            "Unit": "Unit number",
+                            "Unit number": "Unit number",
+                            "Group": "Group",
+                            "Blood Components": "Blood Components",
+                            "Components": "Blood Components",
+                            "Status": "Status",
+                            "Note": "บันทึก",
+                            "Remarks": "บันทึก",
+                            "บันทึก": "บันทึก",
+                        }
+                        df_file = df_file.rename(
+                            columns={c: col_map.get(str(c).strip(), c) for c in df_file.columns}
+                        )
+
+                        # แปลงสถานะจากอังกฤษ -> ไทย
+                        status_map_en2th = {
+                            "Available": "ว่าง",        # พร้อมใช้
+                            "ReadyToIssue": "จอง",      # จอง
+                            "Released": "จ่ายแล้ว",     # จ่ายแล้ว
+                            "Expired": "Exp",
+                            "ReleasedExpired": "Exp",
+                            "Out": "จ่ายแล้ว",
+                        }
+                        if "Status" in df_file.columns:
+                            df_file["Status"] = df_file["Status"].map(
+                                lambda s: status_map_en2th.get(str(s).strip(), str(s).strip())
+                            )
+
+                        # เติมคอลัมน์ที่จำเป็น
+                        for c in ["created_at", "Exp date", "Unit number", "Group",
+                                  "Blood Components", "Status", "บันทึก"]:
+                            if c not in df_file.columns:
+                                df_file[c] = ""
+                        df_file = df_file[
+                            ["created_at", "Exp date", "Unit number", "Group",
+                             "Blood Components", "Status", "บันทึก"]
+                        ].copy()
+
+                        # คอลัมน์สถานะ(สี)
+                        df_file["สถานะ(สี)"] = df_file["Status"].map(
+                            lambda s: STATUS_COLOR.get(str(s), str(s))
+                        )
+
+                        # ถ้าเลือก "แทนที่ทั้งหมด" ให้ล้าง entries + reset stock ก่อน
+                        replace_mode = mode_merge.startswith("แทนที่")
+                        if replace_mode:
+                            st.session_state["entries"] = pd.DataFrame(columns=ENTRY_COLS)
+                            st.session_state["activity"] = []
+                            reset_all_stock(st.session_state.get("username", "admin"))
+
+                        # เตรียม list สำหรับสร้าง DataFrame ใหม่
+                        new_rows = []
+                        applied = failed = 0
+
+                        for _, r in df_file.iterrows():
+                            g = str(r["Group"]).strip() or "A"
+                            comp = str(r["Blood Components"]).strip() or "LPRC"
+                            stt = str(r["Status"]).strip() or "ว่าง"
+                            nt = str(r["บันทึก"]).strip()
+
+                            row_dict = {
+                                "created_at": str(
+                                    r["created_at"] or datetime.now().strftime("%Y/%m/%d")
+                                ),
+                                "Exp date": str(r["Exp date"] or ""),
+                                "Unit number": str(r["Unit number"] or ""),
+                                "Group": g,
+                                "Blood Components": comp,
+                                "Status": stt,
+                                "สถานะ(สี)": STATUS_COLOR.get(stt, stt),
+                                "บันทึก": nt,
+                            }
+                            new_rows.append(row_dict)
+
+                            # อัปเดตคลัง: สำหรับไฟล์ snapshot เรานับเฉพาะ "ว่าง" และ "หลุดจอง"
+                            try:
+                                if stt in ["ว่าง", "หลุดจอง"]:
+                                    apply_stock_change(
+                                        g, comp, +1, nt or "import", st.session_state.get("username") or "admin"
+                                    )
+                                    add_activity("INBOUND", g, comp, +1, f"import: {nt}")
+                                elif stt in ["จ่ายแล้ว"]:
+                                    add_activity("OUTBOUND", g, comp, 0, f"import: {nt}")
+                                else:
+                                    add_activity("INFO", g, comp, 0, f"import: {nt}")
+                                applied += 1
+                            except Exception:
+                                failed += 1
+
+                        new_df = pd.DataFrame(new_rows, columns=ENTRY_COLS)
+
+                        if replace_mode:
+                            st.session_state["entries"] = new_df
+                        else:
+                            combined = pd.concat(
+                                [st.session_state["entries"], new_df],
+                                ignore_index=True,
+                            )
+                            combined = combined.drop_duplicates(
+                                subset=["Unit number", "Group", "Blood Components"],
+                                keep="last",
+                            )
+                            st.session_state["entries"] = combined
+
+                        flash(
+                            f"นำเข้าเสร็จสิ้น ✅ สำเร็จ {applied} รายการ"
+                            f"{' (ล้มเหลว '+str(failed)+')' if failed else ''}"
+                        )
+
+                except Exception as e:
+                    st.error(f"อ่านไฟล์ไม่สำเร็จ: {e}")
+
+        # ---- ตารางสรุป (แก้ไขได้) + ลำดับ ----
+        st.markdown("### ตารางสรุป (แก้ไขได้)")
+        df_vis = st.session_state["entries"].copy(deep=True)
+
+        parsed = pd.to_datetime(df_vis["Exp date"], errors="coerce")
+        df_vis["Exp date"] = parsed.dt.date
+
+        df_vis["_exp_days"] = df_vis["Exp date"].apply(left_days_safe)
+        df_vis["วันหมดอายุนับถอยหลัง (วัน)"] = df_vis["_exp_days"]
+        df_vis["สถานะวันหมดอายุ"] = df_vis["_exp_days"].apply(expiry_label)
+
+        render_minimal_banner(df_vis)
+
+        cols_show = [
+            "created_at",
+            "Exp date",
+            "วันหมดอายุนับถอยหลัง (วัน)",
+            "สถานะวันหมดอายุ",
+            "Unit number",
+            "Group",
+            "Blood Components",
+            "Status",
+            "สถานะ(สี)",
+            "บันทึก",
+        ]
+        df_vis = df_vis.reindex(columns=cols_show)
+
+        # เพิ่มคอลัมน์ลำดับ (index ที่มองเห็น)
+        df_vis.insert(0, "ลำดับ", range(1, len(df_vis) + 1))
+
+        col_cfg = {
+            "ลำดับ": st.column_config.NumberColumn("ลำดับ", disabled=True),
+            "created_at": st.column_config.TextColumn("Created at (YYYY/MM/DD)"),
+            "Exp date": st.column_config.DateColumn("Exp date", format="YYYY/MM/DD"),
+            "วันหมดอายุนับถอยหลัง (วัน)": st.column_config.NumberColumn(
+                "วันหมดอายุนับถอยหลัง (วัน)", disabled=True
+            ),
+            "สถานะวันหมดอายุ": st.column_config.TextColumn("ค่าสถานะ (สี)", disabled=True),
+            "Unit number": st.column_config.TextColumn("Unit number"),
+            "Group": st.column_config.SelectboxColumn("Group", options=["A", "B", "O", "AB"]),
+            "Blood Components": st.column_config.SelectboxColumn(
+                "Blood Components", options=["LPRC", "PRC", "FFP", "PC"]
+            ),
+            "Status": st.column_config.SelectboxColumn("Status", options=STATUS_OPTIONS),
+            "สถานะ(สี)": st.column_config.TextColumn("สถานะ(สี)", disabled=True),
+            "บันทึก": st.column_config.TextColumn("บันทึก"),
+        }
+
+        edited = st.data_editor(
+            df_vis,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            column_config=col_cfg,
+            key="entries_editor",
+        )
+
+        # ถ้ามีการแก้ไขตาราง -> sync กลับไปที่ session_state["entries"]
+        if not edited.equals(df_vis):
+            out = edited.copy()
+            if "ลำดับ" in out.columns:
+                out = out.drop(columns=["ลำดับ"])
+
+            def _d2str(x):
+                try:
+                    if pd.isna(x):
+                        return ""
+                except Exception:
+                    pass
+                if isinstance(x, (datetime, pd.Timestamp)):
+                    return x.date().strftime("%Y/%m/%d")
+                if isinstance(x, date):
+                    return x.strftime("%Y/%m/%d")
+                try:
+                    return pd.to_datetime(x, errors="coerce").date().strftime("%Y/%m/%d")
+                except Exception:
+                    return str(x)
+
+            out["Exp date"] = out["Exp date"].apply(_d2str)
+            keep = ENTRY_COLS
+            st.session_state["entries"] = out[keep].reset_index(drop=True)
+            flash("อัปเดตตารางแล้ว ✅")
+            _safe_rerun()
+
+# --------------------------------
+# PAGE: หน้าหลัก
+# --------------------------------
+elif st.session_state["page"] == "หน้าหลัก":
+    if not st.session_state["logged_in"]:
+        # ยังไม่ล็อกอิน แสดง Landing page
+        render_landing_page()
+    else:
+        # ล็อกอินแล้ว แสดง Dashboard เดิม
+        auto_update_booking_to_release()
+
+        c1, c2, _ = st.columns(3)
+        c1.markdown(
+            '<span class="badge"><span class="legend-dot" style="background:#ef4444"></span> วิกฤตใกล้หมด 0–4</span>',
+            unsafe_allow_html=True,
+        )
+        c2.markdown(
+            '<span class="badge"><span class="legend-dot" style="background:#f59e0b"></span> เพียงพอ 5–15</span>',
+            unsafe_allow_html=True,
+        )
+
+        totals = totals_overview()
+        blood_types = ["A", "B", "O", "AB"]
+        cols = st.columns(4)
+        for i, bt in enumerate(blood_types):
+            with cols[i]:
+                st.markdown(f"### ถุงเลือดกรุ๊ป **{bt}**")
+                st_html(bag_svg(bt, totals.get(bt, 0)), height=270, scrolling=False)
+                if st.button(f"ดูรายละเอียดกรุ๊ป {bt}", key=f"btn_{bt}"):
+                    st.session_state["selected_bt"] = bt
+                    _safe_rerun()
+
+        st.divider()
+        sel = st.session_state.get("selected_bt") or "A"
+        st.subheader(f"รายละเอียดกรุ๊ป {sel}")
+        _L, _M, _R = st.columns([1, 1, 1])
+        with _M:
+            st_html(bag_svg(sel, totals.get(sel, 0)), height=270, scrolling=False)
+
+        dist_sel = products_of(sel)
+        dist_sel["Cryo"] = get_global_cryo()
+
+        df = pd.DataFrame([{"product_type": k, "units": int(v)} for k, v in dist_sel.items()])
+        df["product_type"] = pd.Categorical(df["product_type"], categories=ALL_PRODUCTS_UI, ordered=True)
+
+        def color_for(u):
+            if u <= CRITICAL_MAX:
+                return "#ef4444"
+            if u <= YELLOW_MAX:
+                return "#f59e0b"
+            return "#22c55e"
+
+        df["color"] = df["units"].apply(color_for)
+
+        # สำหรับกราฟ: แสดงเฉพาะที่มีหน่วย > 0
+        df_chart = df[df["units"] > 0].copy()
+        ymax = max(10, int(df_chart["units"].max() * 1.25)) if not df_chart.empty else 10
+
+        if df_chart.empty:
+            st.info("ยังไม่มีหน่วยเลือดที่ใช้งานได้สำหรับกรุ๊ปนี้")
+        else:
+            bars = alt.Chart(df_chart).mark_bar().encode(
+                x=alt.X("product_type:N", sort=ALL_PRODUCTS_UI, title="ประเภทผลิตภัณฑ์"),
+                y=alt.Y("units:Q", title="จำนวนหน่วย (unit)", scale=alt.Scale(domainMin=0, domainMax=ymax)),
+                color=alt.Color("color:N", scale=None, legend=None),
+                tooltip=["product_type", "units"],
+            )
+            text = alt.Chart(df_chart).mark_text(
+                align="center",
+                baseline="bottom",
+                dy=-4,
+                fontSize=13,
+            ).encode(
+                x=alt.X("product_type:N", sort=ALL_PRODUCTS_UI),
+                y="units:Q",
+                text="units:Q",
+            )
+            chart = alt.layer(bars, text).properties(height=340).configure_view(strokeOpacity=0)
+            st.altair_chart(chart, use_container_width=True)
+
+        st.dataframe(
+            df.sort_values(by="product_type")[["product_type", "units"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.markdown("### รายการบันทึกความเคลื่อนไหว (Activity Log)")
+        if st.session_state["activity"]:
+            st.dataframe(pd.DataFrame(st.session_state["activity"]), use_container_width=True, hide_index=True)
+        else:
+            st.info("ยังไม่มีรายการความเคลื่อนไหว")
+
+# --------------------------------
+# PAGE: เข้าสู่ระบบ (แบบใหม่)
+# --------------------------------
+elif st.session_state["page"] == "เข้าสู่ระบบ":
+    if st.session_state["logged_in"]:
+        st.success("คุณเข้าสู่ระบบแล้ว สามารถใช้เมนูด้านซ้ายเพื่อจัดการข้อมูลได้เลย")
+        if st.button("ไปที่หน้ากรอกเลือด", type="primary"):
+            st.session_state["page"] = "กรอกเลือด"
+            _safe_rerun()
+    else:
+        render_login_page()
+
+# --------------------------------
+# ปุ่มรีเซ็ตสต็อกทั้งหมด
+# --------------------------------
+st.divider()
+st.markdown("### ⚠️ จัดการระบบ")
+if st.session_state.get("logged_in"):
+    if st.button("🧹 รีเซ็ตเลือดทั้งหมดเป็นศูนย์", type="primary", use_container_width=True):
+        reset_all_stock(st.session_state.get("username", "admin"))
+        flash("รีเซ็ตจำนวนเลือดทั้งหมดแล้ว ✅", "warning")
+        _safe_rerun()
+else:
+    st.info("ต้องเข้าสู่ระบบก่อนจึงจะใช้งานปุ่มรีเซ็ตได้")
