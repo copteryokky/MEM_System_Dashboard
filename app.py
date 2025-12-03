@@ -1,6 +1,6 @@
+import streamlit as st
 import pandas as pd
 import altair as alt
-import streamlit as st
 from pathlib import Path
 from io import BytesIO
 import qrcode
@@ -46,112 +46,163 @@ def set_landing_style():
         [data-testid="stHeader"]{
             background: transparent;
         }
-        .landing-container{
-            max-width: 900px;
-            margin: 2.8rem auto 3rem auto;
+
+        .landing-wrapper{
+            max-width: 960px;
+            margin: 2.5rem auto 4rem auto;
             text-align: center;
         }
+
+        .landing-hero-icon{
+            width: 80px;
+            height: 80px;
+            border-radius: 24px;
+            background: linear-gradient(135deg,#fed7aa,#fdba74);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            margin: 0 auto 1.2rem auto;
+            box-shadow: 0 18px 40px rgba(248,171,94,0.45);
+            font-size: 40px;
+        }
+
         .landing-badge{
             display:inline-block;
-            padding:4px 14px;
+            padding:4px 16px;
             border-radius:999px;
-            background:rgba(15,23,42,0.06);
+            background:rgba(15,23,42,0.04);
             font-size:12px;
             color:#4b5563;
-            margin-bottom:0.75rem;
+            margin-bottom:0.9rem;
         }
+
         .landing-title{
-            font-size:32px;
+            font-size:36px;
             font-weight:800;
             line-height:1.25;
             color:#020617;
-            margin-bottom:0.75rem;
+            margin-bottom:0.6rem;
         }
         .landing-highlight{
             color:#2563eb;
         }
+
         .landing-sub{
-            font-size:13px;
+            font-size:14px;
             color:#6b7280;
-            max-width:650px;
-            margin:0 auto 1.7rem auto;
+            max-width:620px;
+            margin:0 auto 1.8rem auto;
+        }
+
+        .landing-btn-row{
+            display:flex;
+            justify-content:center;
+            gap:0.75rem;
+            margin-bottom:0.9rem;
         }
         .landing-btn-primary button{
-            background:#2563eb;
+            background:#ffffff;
+            color:#111827;
+            border-radius:999px;
+            height:2.8rem;
+            padding:0 2.4rem;
+            font-weight:600;
+            border:1px solid #e5e7eb;
+            box-shadow:0 10px 24px rgba(15,23,42,0.12);
+        }
+        .landing-btn-primary button:hover{
+            background:#f9fafb;
+        }
+        .landing-btn-secondary button{
+            background:#f97316;
             color:#ffffff;
             border-radius:999px;
             height:2.8rem;
-            padding:0 2.5rem;
+            padding:0 2.6rem;
             font-weight:600;
             border:none;
-            box-shadow:0 18px 35px rgba(37,99,235,0.25);
+            box-shadow:0 18px 40px rgba(248,113,22,0.55);
         }
-        .landing-btn-primary button:hover{
-            background:#1d4ed8;
+        .landing-btn-secondary button:hover{
+            background:#ea580c;
         }
-        .landing-btn-outline button{
-            border-radius:999px;
-            height:2.8rem;
-            padding:0 2.5rem;
-            font-weight:500;
-            border:1px solid #cbd5f5;
-            background:rgba(255,255,255,0.9);
-            color:#1f2933;
-        }
+
         .landing-note{
-            margin-top:0.55rem;
             font-size:11px;
             color:#9ca3af;
         }
-        .landing-feature-wrapper{
-            max-width:1000px;
-            margin:1.5rem auto 0 auto;
-        }
-        .landing-feature-card{
-            background:#ffffff;
-            border-radius:26px;
-            padding:20px 22px;
-            box-shadow:0 18px 40px rgba(15,23,42,0.12);
-            border:1px solid rgba(209,213,219,0.7);
-        }
-        .landing-feature-title{
-            font-size:16px;
-            font-weight:700;
-            margin-bottom:0.4rem;
-            color:#111827;
-        }
-        .landing-feature-sub{
-            font-size:12px;
-            color:#6b7280;
-            margin-bottom:0.8rem;
+
+        .landing-feature-section{
+            max-width:1040px;
+            margin:3.4rem auto 0 auto;
         }
         .landing-feature-grid{
             display:flex;
             flex-wrap:wrap;
-            gap:12px;
+            gap:18px;
+            justify-content:center;
         }
-        .landing-feature-item{
+        .landing-feature-card{
             flex:1 1 0;
-            min-width:220px;
-            background:#f9fafb;
-            border-radius:20px;
-            padding:12px 14px;
-            text-align:left;
+            min-width:260px;
+            max-width:320px;
+            background:#ffffff;
+            border-radius:28px;
+            padding:20px 22px 22px 22px;
+            text-align:center;
             border:1px solid #e5e7eb;
+            box-shadow:0 22px 52px rgba(15,23,42,0.08);
+        }
+        .landing-feature-icon-wrapper{
+            width:46px;
+            height:46px;
+            border-radius:18px;
+            margin:0 auto 0.75rem auto;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+        }
+        .card-icon-1{
+            background:#fef3c7;
+            color:#92400e;
+        }
+        .card-icon-2{
+            background:#fee2e2;
+            color:#b91c1c;
+        }
+        .card-icon-3{
+            background:#dbeafe;
+            color:#1d4ed8;
         }
         .landing-feature-icon{
-            font-size:19px;
-            margin-bottom:6px;
+            font-size:24px;
         }
-        .landing-feature-item-title{
-            font-size:13px;
+        .landing-feature-title{
+            font-size:15px;
             font-weight:700;
-            margin-bottom:3px;
+            margin-bottom:0.4rem;
             color:#111827;
         }
-        .landing-feature-item-text{
-            font-size:11px;
+        .landing-feature-text{
+            font-size:12px;
             color:#6b7280;
+            line-height:1.5;
+        }
+
+        @media (max-width: 768px){
+            .landing-wrapper{
+                margin-top:1.6rem;
+                padding:0 1.2rem;
+            }
+            .landing-title{
+                font-size:26px;
+            }
+            .landing-sub{
+                font-size:13px;
+            }
+            .landing-feature-card{
+                min-width:100%;
+            }
         }
         </style>
         """,
@@ -261,7 +312,6 @@ def set_main_style():
             box-shadow: none;
         }
 
-        /* SIDEBAR */
         [data-testid="stSidebar"]{
             background: #1F2430;
         }
@@ -325,7 +375,6 @@ def set_main_style():
             margin-bottom: 1.5rem;
         }
 
-        /* HERO CARD – โทนขาวฟ้า */
         .mem-hero{
             background: linear-gradient(135deg,#eef2ff,#e0f2fe);
             border-radius: 26px;
@@ -456,7 +505,6 @@ def get_available_excel_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
 
-
 def init_excel_file_name():
     if "excel_file_name" in st.session_state:
         return
@@ -473,14 +521,12 @@ def init_excel_file_name():
     else:
         st.session_state["excel_file_name"] = None
 
-
 def get_current_excel_path() -> Path | None:
     init_excel_file_name()
     name = st.session_state.get("excel_file_name")
     if not name:
         return None
     return DATA_DIR / name
-
 
 def load_equipment_data() -> pd.DataFrame:
     path = get_current_excel_path()
@@ -491,17 +537,17 @@ def load_equipment_data() -> pd.DataFrame:
         df = pd.read_excel(path)
         df = df.dropna(how="all").reset_index(drop=True)
 
-        # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกับหน้า QR
         if "สถานะแจ้งซ่อม" not in df.columns:
             df["สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
         if "รูปภาพครุภัณฑ์" not in df.columns:
             df["รูปภาพครุภัณฑ์"] = ""
+        if "บันทึกจากหน้างานล่าสุด" not in df.columns:
+            df["บันทึกจากหน้างานล่าสุด"] = ""
 
         return df
     except Exception as e:
         st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
         return pd.DataFrame()
-
 
 def save_equipment_data(df: pd.DataFrame):
     path = get_current_excel_path()
@@ -516,7 +562,6 @@ def save_equipment_data(df: pd.DataFrame):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
 
-
 # =========================
 # Helper: รูป / QR
 # =========================
@@ -524,12 +569,10 @@ def get_image_path_from_row(row: pd.Series) -> Path | None:
     val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
     if not val:
         return None
-
     p = Path(val)
     if not p.is_absolute():
         p = IMAGE_DIR / p.name
     return p
-
 
 def save_uploaded_image(uploaded, asset_code: str) -> str:
     suffix = Path(uploaded.name).suffix or ".png"
@@ -539,7 +582,6 @@ def save_uploaded_image(uploaded, asset_code: str) -> str:
     with open(target_path, "wb") as f:
         f.write(uploaded.getbuffer())
     return filename
-
 
 def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
     for col in ["_qr_image_path", "QR Code"]:
@@ -556,7 +598,6 @@ def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
                 return p
     return None
 
-
 def generate_qr_bytes_for_url(url: str) -> bytes:
     img = qrcode.make(url)
     buf = BytesIO()
@@ -564,14 +605,16 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-
 # =========================
 # หน้า Landing
 # =========================
 def landing_page():
     set_landing_style()
 
-    st.markdown('<div class="landing-container">', unsafe_allow_html=True)
+    st.markdown('<div class="landing-wrapper">', unsafe_allow_html=True)
+
+    st.markdown('<div class="landing-hero-icon">🏥</div>', unsafe_allow_html=True)
+
     st.markdown(
         """
         <div class="landing-badge">
@@ -580,6 +623,7 @@ def landing_page():
         """,
         unsafe_allow_html=True,
     )
+
     st.markdown(
         """
         <div class="landing-title">
@@ -589,71 +633,78 @@ def landing_page():
         """,
         unsafe_allow_html=True,
     )
+
     st.markdown(
         """
         <div class="landing-sub">
-            จัดการครุภัณฑ์เครื่องมือแพทย์ ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม และข้อมูลห้องปฏิบัติการ 
-            ให้ทุกคนใช้ข้อมูลชุดเดียวกัน รองรับการตรวจประเมินคุณภาพ
+            จัดการครุภัณฑ์เครื่องมือแพทย์ตั้งแต่ทะเบียน ประวัติการใช้งาน การแจ้งซ่อม
+            ไปจนถึงข้อมูลห้องปฏิบัติการ ให้ทุกคนในทีมใช้ข้อมูลชุดเดียวกัน
+            รองรับการตรวจประเมินคุณภาพมาตรฐานต่าง ๆ ได้อย่างมั่นใจ
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ปุ่มอยู่กึ่งกลาง
-    col_left, col_mid, col_right = st.columns([1, 2, 1])
-    with col_mid:
+    st.markdown('<div class="landing-btn-row">', unsafe_allow_html=True)
+    col_btn1, col_btn2 = st.columns([1, 1])
+
+    with col_btn1:
         st.markdown('<div class="landing-btn-primary">', unsafe_allow_html=True)
-        start_btn = st.button("เริ่มใช้งานระบบ")
+        start_btn = st.button("เริ่มใช้งานระบบ", key="landing_start_btn")
         st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown('<div style="margin-top:0.5rem;"></div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="landing-btn-outline">', unsafe_allow_html=True)
-        login_btn = st.button("เข้าสู่ระบบ")
+    with col_btn2:
+        st.markdown('<div class="landing-btn-secondary">', unsafe_allow_html=True)
+        login_btn = st.button("เข้าสู่ระบบ", key="landing_login_btn")
         st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown(
-            '<div class="landing-note">สำหรับเจ้าหน้าที่ที่ได้รับสิทธิ์ใช้งานห้องปฏิบัติการเท่านั้น</div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)  # ปิด landing-container
+    st.markdown(
+        '<div class="landing-note">สำหรับเจ้าหน้าที่ที่ได้รับสิทธิ์ใช้งานห้องปฏิบัติการเท่านั้น</div>',
+        unsafe_allow_html=True,
+    )
 
-    # ถ้ากดปุ่ม -> ไปหน้า login
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if start_btn or login_btn:
         st.session_state.view = "login"
         st.rerun()
 
-    # กล่องคุณสมบัติเด่น
-    st.markdown('<div class="landing-feature-wrapper">', unsafe_allow_html=True)
+    st.markdown('<div class="landing-feature-section">', unsafe_allow_html=True)
     st.markdown(
         """
-        <div class="landing-feature-card">
-            <div class="landing-feature-title">คุณสมบัติเด่นของระบบ</div>
-            <div class="landing-feature-sub">
-                ออกแบบมาสำหรับงานห้องปฏิบัติการทางการแพทย์ ใช้งานง่ายสำหรับเจ้าหน้าที่ และช่วยให้หัวหน้าหน่วยงานเห็นภาพรวมได้ชัดเจน
+        <div class="landing-feature-grid">
+            <div class="landing-feature-card">
+                <div class="landing-feature-icon-wrapper card-icon-1">
+                    <span class="landing-feature-icon">✔️</span>
+                </div>
+                <div class="landing-feature-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
+                <div class="landing-feature-text">
+                    จัดเก็บครุภัณฑ์ทีละรายการอย่างเป็นระบบ ทั้งรหัสครุภัณฑ์ รุ่น
+                    Serial Number มูลค่า และสถานะการใช้งานปัจจุบัน
+                </div>
             </div>
-            <div class="landing-feature-grid">
-                <div class="landing-feature-item">
-                    <div class="landing-feature-icon">📋</div>
-                    <div class="landing-feature-item-title">ทะเบียนครุภัณฑ์ละเอียดครบถ้วน</div>
-                    <div class="landing-feature-item-text">
-                        เก็บข้อมูลเครื่องมือแพทย์แต่ละรายการ เช่น รุ่น หมายเลขเครื่อง Serial Number มูลค่า และสถานะการใช้งาน
-                    </div>
+
+            <div class="landing-feature-card">
+                <div class="landing-feature-icon-wrapper card-icon-2">
+                    <span class="landing-feature-icon">🔳</span>
                 </div>
-                <div class="landing-feature-item">
-                    <div class="landing-feature-icon">🧾</div>
-                    <div class="landing-feature-item-title">QR Code เชื่อมโยงข้อมูลหน้างาน</div>
-                    <div class="landing-feature-item-text">
-                        ติด QR ที่อุปกรณ์และสแกนด้วยมือถือเพื่อเปิดหน้าข้อมูลครุภัณฑ์ แสดงรูป ประวัติ และสถานะการแจ้งซ่อมได้ทันที
-                    </div>
+                <div class="landing-feature-title">ตรวจเช็กครุภัณฑ์ด้วย QR หน้างาน</div>
+                <div class="landing-feature-text">
+                    ติด QR ไว้ที่ตัวอุปกรณ์ เจ้าหน้าที่สแกนเพื่อเปิดหน้าข้อมูล
+                    ดูรูปภาพ ประวัติ และอัปเดตสถานะแจ้งซ่อมได้ทันทีจากมือถือ
                 </div>
-                <div class="landing-feature-item">
-                    <div class="landing-feature-icon">📊</div>
-                    <div class="landing-feature-item-title">Dashboard สรุปภาพรวมแบบ Real-time</div>
-                    <div class="landing-feature-item-text">
-                        แสดงจำนวนครุภัณฑ์ตามสถานะ ห้องที่มีครุภัณฑ์มากที่สุด และข้อมูลที่ใช้เตรียมเอกสารตรวจประเมินมาตรฐานต่าง ๆ
-                    </div>
+            </div>
+
+            <div class="landing-feature-card">
+                <div class="landing-feature-icon-wrapper card-icon-3">
+                    <span class="landing-feature-icon">📊</span>
+                </div>
+                <div class="landing-feature-title">Dashboard สรุปภาพรวมแบบ Real-time</div>
+                <div class="landing-feature-text">
+                    ดูจำนวนครุภัณฑ์แต่ละสถานะ ห้องที่มีเครื่องมือมากที่สุด
+                    และข้อมูลสถิติที่ใช้ประกอบรายงานและการตรวจประเมินมาตรฐานต่าง ๆ
                 </div>
             </div>
         </div>
@@ -661,7 +712,6 @@ def landing_page():
         unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
-
 
 # =========================
 # หน้า Login
@@ -705,7 +755,6 @@ def login_page():
         else:
             st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
 
-
 # =========================
 # Helper: ใส่สไตล์ใน Altair chart
 # =========================
@@ -718,7 +767,6 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
             fill="#FFFFFF",
         )
     )
-
 
 # =========================
 # หน้า "หน้าหลัก" + Dashboard
@@ -748,7 +796,6 @@ def page_home():
         st.warning("ไม่พบคอลัมน์ 'สถานะ' ในไฟล์ Excel")
         return
 
-    # --------- เตรียมข้อมูลสถานะ ---------
     status_counts = (
         df[status_col]
         .fillna("ไม่ทราบสถานะ")
@@ -786,7 +833,6 @@ def page_home():
         range=[color_map[k] for k in color_map.keys()],
     )
 
-    # --------- ข้อมูลตามสถานที่ใช้งาน ---------
     loc_col = "สถานที่ใช้งาน (ปัจจุบัน)"
     loc_total = 0
     top_loc_name = "ไม่พบข้อมูล"
@@ -805,7 +851,6 @@ def page_home():
             top_loc_name = str(loc_counts.iloc[0]["สถานที่ใช้งาน"])
             top_loc_count = int(loc_counts.iloc[0]["count"])
 
-    # --------- SUMMARY ตัวเลข (Hero Card) ---------
     def get_count(label: str) -> int:
         try:
             return int(status_counts.loc[status_counts["สถานะ"] == label, "count"].sum())
@@ -891,7 +936,6 @@ def page_home():
     )
     st.markdown(hero_html, unsafe_allow_html=True)
 
-    # --------- PIE CHART (Donut) + ตาราง ---------
     base_pie = (
         alt.Chart(status_counts)
         .encode(
@@ -954,7 +998,6 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------- HERO CARD ที่ 2: แสดง Top สถานที่ ---------
     if not loc_counts.empty:
         metric_parts = []
         for rank, (_, r) in enumerate(loc_counts.head(6).iterrows(), start=1):
@@ -980,7 +1023,6 @@ def page_home():
         )
         st.markdown(loc_hero_html, unsafe_allow_html=True)
 
-
 # =========================
 # Helper: ตาราง + เลือกแถว (สำหรับลบ)
 # =========================
@@ -1005,7 +1047,6 @@ def equipment_table_with_selection(df: pd.DataFrame):
 
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
-
 
 # =========================
 # หน้า "รายการครุภัณฑ์"
@@ -1075,7 +1116,6 @@ def page_equipment_list():
     st.markdown("### ตารางรายการครุภัณฑ์")
     equipment_table_with_selection(df)
 
-    # ---------- ปุ่มลบข้อมูล ----------
     st.markdown("#### จัดการลบข้อมูล")
     col_del1, col_del2 = st.columns([1, 1.2])
 
@@ -1105,7 +1145,6 @@ def page_equipment_list():
                 st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
                 st.rerun()
 
-    # ---------- เลือกแถวสำหรับแก้ไขรายละเอียด ----------
     def format_option(i: int) -> str:
         row = df.iloc[i]
         name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
@@ -1141,11 +1180,10 @@ def page_equipment_list():
     row = df.iloc[selected_idx].copy()
     asset_code = str(row.get(ASSET_CODE_COL, ""))
 
-    # ---- ฟิลด์หลัก (ยกเว้น สถานะแจ้งซ่อม + รูปภาพครุภัณฑ์ ที่จัดส่วนต่างหาก) ----
     columns_list = [
         c
         for c in df.columns
-        if c not in ("รูปภาพครุภัณฑ์", "สถานะแจ้งซ่อม")
+        if c not in ("รูปภาพครุภัณฑ์", "สถานะแจ้งซ่อม", "บันทึกจากหน้างานล่าสุด")
     ]
 
     half = (len(columns_list) + 1) // 2
@@ -1175,7 +1213,6 @@ def page_equipment_list():
             )
             updated_values[col_name] = new_val
 
-    # ---- ส่วนสถานะแจ้งซ่อม ----
     st.markdown("### สถานะแจ้งซ่อม")
     current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
     if current_maint not in MAINT_STATUS_CHOICES:
@@ -1189,7 +1226,16 @@ def page_equipment_list():
     )
     updated_values["สถานะแจ้งซ่อม"] = maint_select
 
-    # ---- ส่วน QR + รูปภาพ ----
+    st.markdown("### บันทึกจากหน้างานล่าสุด")
+    current_note = str(row.get("บันทึกจากหน้างานล่าสุด", "") or "")
+    note_input = st.text_area(
+        "บันทึกจากหน้างาน (เช่น อาการเสีย / สิ่งที่ตรวจพบ)",
+        value=current_note,
+        height=100,
+        key=f"note_admin_{selected_idx}",
+    )
+    updated_values["บันทึกจากหน้างานล่าสุด"] = note_input
+
     st.markdown("### QR Code และรูปภาพครุภัณฑ์")
     qr_col, img_col = st.columns([1, 1])
 
@@ -1203,15 +1249,12 @@ def page_equipment_list():
             with open(qr_path, "rb") as f:
                 qr_bytes_for_download = f.read()
         else:
-            # URL ของเว็บ QR ที่เปิดหลังสแกน
             url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
             qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
             st.image(qr_bytes_for_download, use_column_width=True)
 
         st.caption(asset_code)
-        st.write(
-            "สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน"
-        )
+        st.write("สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน")
 
         if qr_bytes_for_download:
             st.download_button(
@@ -1243,7 +1286,6 @@ def page_equipment_list():
             st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
             return
 
-        # อัปเดตค่าฟิลด์ทั้งหมดตาม updated_values
         for col in updated_values:
             if col not in df_current.columns:
                 continue
@@ -1261,7 +1303,6 @@ def page_equipment_list():
             else:
                 df_current.at[selected_idx, col] = raw_val
 
-        # ถ้าอัปโหลดรูปใหม่ -> เซฟและเก็บชื่อไฟล์ในคอลัมน์ "รูปภาพครุภัณฑ์"
         if uploaded_img is not None:
             filename = save_uploaded_image(uploaded_img, asset_code)
             if "รูปภาพครุภัณฑ์" not in df_current.columns:
@@ -1270,7 +1311,6 @@ def page_equipment_list():
 
         save_equipment_data(df_current)
         st.rerun()
-
 
 # =========================
 # หน้า "แจ้งซ่อม / บำรุงรักษา"
@@ -1330,7 +1370,6 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 # =========================
 # หน้า "รายงานสรุป"
 # =========================
@@ -1341,7 +1380,6 @@ def page_summary():
         unsafe_allow_html=True,
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
-
 
 # =========================
 # MAIN APP หลัง Login
@@ -1388,7 +1426,6 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            # เคลียร์ session แล้วกลับหน้า Landing
             keep_keys = []
             for k in list(st.session_state.keys()):
                 if k not in keep_keys:
@@ -1408,7 +1445,6 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
-
 # =========================
 # ENTRY POINT
 # =========================
@@ -1421,7 +1457,6 @@ if "current_menu" not in st.session_state:
 if "selected_row_idx" not in st.session_state:
     st.session_state.selected_row_idx = 0
 
-# ถ้าล็อกอินอยู่แล้ว รีเฟรชหน้าให้เข้า main_app เลย
 if st.session_state.logged_in:
     main_app()
 else:
