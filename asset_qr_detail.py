@@ -1,3 +1,4 @@
+# qr_app.py
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -5,17 +6,11 @@ from io import BytesIO
 import qrcode
 from typing import Optional
 
-from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
+from config import get_excel_path, DATA_DIR
 
 # =========================
 # CONFIG / CONSTANTS
 # =========================
-st.set_page_config(
-    page_title="ข้อมูลครุภัณฑ์จาก QR",
-    page_icon="🔎",
-    layout="wide",
-)
-
 ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 IMAGE_DIR = Path("asset_images")
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -27,33 +22,18 @@ MAINT_STATUS_CHOICES = [
     "ปลดระวาง / รอจำหน่าย",
 ]
 
+st.set_page_config(
+    page_title="ข้อมูลครุภัณฑ์จาก QR",
+    page_icon="🔎",
+    layout="wide",
+)
 
 # =========================
-# Excel Helpers (ให้ตรงกับ app.py)
+# Excel helpers
 # =========================
-def get_current_excel_path() -> Optional[Path]:
-    """
-    ใช้ DEFAULT_EXCEL_PATH เป็นหลัก
-    ถ้าไม่มีให้มองหาไฟล์ .xls* ในโฟลเดอร์ data
-    (หน้า QR ไม่มีการเลือกไฟล์ จึงใช้ไฟล์หลักเดียวกันเสมอ)
-    """
-    if DEFAULT_EXCEL_PATH.exists():
-        return DEFAULT_EXCEL_PATH
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    files = sorted(DATA_DIR.glob("*.xls*"))
-    if not files:
-        return None
-
-    for f in files:
-        if f.name == DEFAULT_EXCEL_NAME:
-            return f
-    return files[0]
-
-
 def load_equipment_data() -> pd.DataFrame:
-    path = get_current_excel_path()
-    if path is None or not path.exists():
+    path = get_excel_path()
+    if not path or not path.exists():
         return pd.DataFrame()
 
     try:
@@ -74,21 +54,22 @@ def load_equipment_data() -> pd.DataFrame:
 
 
 def save_equipment_data(df: pd.DataFrame):
-    path = get_current_excel_path()
+    path = get_excel_path()
     if path is None:
         st.error("ยังไม่ได้กำหนดไฟล์ Excel สำหรับบันทึกข้อมูล")
         return
 
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        df.to_excel(path, index=False)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        df.to_excel(tmp_path, index=False)
+        tmp_path.replace(path)
         st.success(f"บันทึกข้อมูลลงไฟล์: {path.name} เรียบร้อยแล้ว")
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
 
-
 # =========================
-# รูปภาพ & QR helpers
+# รูป & QR helpers
 # =========================
 def get_image_path_from_row(row: pd.Series) -> Optional[Path]:
     val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
@@ -117,7 +98,6 @@ def generate_qr_bytes(url: str) -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-
 # =========================
 # อ่าน query param (?code=...)
 # =========================
@@ -138,11 +118,6 @@ if not asset_code:
 # =========================
 # โหลดข้อมูลจาก Excel
 # =========================
-excel_path = get_current_excel_path()
-if not excel_path or not excel_path.exists():
-    st.error("ไม่พบไฟล์ Excel ฐานข้อมูลครุภัณฑ์")
-    st.stop()
-
 df = load_equipment_data()
 if df.empty or ASSET_CODE_COL not in df.columns:
     st.error("ไม่พบข้อมูลครุภัณฑ์ หรือไม่มีคอลัมน์รหัสเครื่องมือห้องปฏิบัติการในไฟล์ Excel")
@@ -162,8 +137,10 @@ name = str(row.get("ชื่อ", "ไม่พบชื่อครุภั�
 st.title(f"รหัสครุภัณฑ์: {asset_code}")
 st.subheader(f"ชื่อครุภัณฑ์: {name}")
 
+excel_path = get_excel_path()
 st.caption(
-    f"ข้อมูลจากไฟล์ Excel: **{excel_path.name}**  (โฟลเดอร์ `data/` ของระบบหลัก)"
+    f"ข้อมูลจากไฟล์ Excel: **{excel_path.name if excel_path else '-'}**  "
+    f"(โฟลเดอร์ `data/` ของระบบ)"
 )
 
 st.write("---")
@@ -185,11 +162,10 @@ with col_qr:
         mime="image/png",
         use_container_width=True,
     )
-    st.caption("สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน")
+    st.caption("สามารถนำ QR นี้ไปติดที่ตัวอุปกรณ์เพื่อใช้สแกนเปิดหน้าข้อมูลนี้ได้")
 
 with col_info:
     st.markdown("### ข้อมูลสรุปครุภัณฑ์")
-
     cols_left = [
         "ชื่อ",
         "รุ่น",
@@ -203,7 +179,6 @@ with col_info:
         "หมวดครุภัณฑ์",
         "สถานที่ใช้งาน (ปัจจุบัน)",
     ]
-
     c1, c2 = st.columns(2)
     with c1:
         for col in cols_left:
@@ -221,7 +196,6 @@ st.write("---")
 # =========================
 st.markdown("## แก้ไขข้อมูลจากหน้างาน")
 
-# สถานะแจ้งซ่อม
 current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
 if current_maint not in MAINT_STATUS_CHOICES:
     current_maint = MAINT_STATUS_CHOICES[0]
@@ -232,7 +206,6 @@ maint_status = st.selectbox(
     index=MAINT_STATUS_CHOICES.index(current_maint),
 )
 
-# บันทึกหน้างาน
 current_note = str(row.get("บันทึกจากหน้างานล่าสุด", "") or "")
 note = st.text_area(
     "บันทึกจากหน้างาน (เช่น อาการเสีย / สิ่งที่ตรวจพบ)",
@@ -240,7 +213,6 @@ note = st.text_area(
     height=100,
 )
 
-# รูปภาพครุภัณฑ์
 st.markdown("### รูปภาพครุภัณฑ์")
 img_path = get_image_path_from_row(row)
 if img_path and img_path.exists():
@@ -256,8 +228,6 @@ uploaded_img = st.file_uploader(
 st.write("")
 if st.button("บันทึกการแก้ไข", type="primary", use_container_width=True):
     df_current = load_equipment_data()
-
-    # หา index อีกครั้ง เผื่อมีการแก้ไขจากระบบหลักระหว่างนั้น
     mask = df_current[ASSET_CODE_COL].astype(str) == asset_code
     idx_list = df_current[mask].index.tolist()
 
@@ -265,8 +235,8 @@ if st.button("บันทึกการแก้ไข", type="primary", use_c
         st.error("ไม่พบรายการนี้ในไฟล์ Excel แล้ว อาจมีการลบหรือแก้ไขจากระบบหลัก")
     else:
         idx = idx_list[0]
-
         df_current.at[idx, "สถานะแจ้งซ่อม"] = maint_status
+
         if "บันทึกจากหน้างานล่าสุด" not in df_current.columns:
             df_current["บันทึกจากหน้างานล่าสุด"] = ""
         df_current.at[idx, "บันทึกจากหน้างานล่าสุด"] = note
@@ -279,4 +249,4 @@ if st.button("บันทึกการแก้ไข", type="primary", use_c
 
         save_equipment_data(df_current)
         st.success("บันทึกการแก้ไขเรียบร้อยแล้ว (ทั้งหน้า QR และหน้าแอดมินจะเห็นข้อมูลเหมือนกัน)")
-        st.rerun()  # ✅ ใช้ st.rerun() แทน experimental_rerun
+        st.rerun()
