@@ -29,6 +29,8 @@ STATUS_MAINT_CHOICES = [
     "ปลดระวาง / รอจำหน่าย",
 ]
 
+ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
+
 
 # ---------------------------
 # Helper: Excel path + IO
@@ -51,16 +53,18 @@ def load_equipment_data() -> pd.DataFrame:
     if path is None or not path.exists():
         return pd.DataFrame()
 
-    df = pd.read_excel(path)
-    df = df.dropna(how="all").reset_index(drop=True)
+    try:
+        df = pd.read_excel(path).dropna(how="all").reset_index(drop=True)
 
-    # ให้แน่ใจว่ามีคอลัมน์ที่ใช้ร่วมกันกับ app.py
-    if "สถานะแจ้งซ่อม" not in df.columns:
-        df["สถานะแจ้งซ่อม"] = "ยังไม่เคยแจ้งซ่อม"
-    if "รูปภาพครุภัณฑ์" not in df.columns:
-        df["รูปภาพครุภัณฑ์"] = ""
+        if "สถานะแจ้งซ่อม" not in df.columns:
+            df["สถานะแจ้งซ่อม"] = STATUS_MAINT_CHOICES[0]
+        if "รูปภาพครุภัณฑ์" not in df.columns:
+            df["รูปภาพครุภัณฑ์"] = ""
 
-    return df
+        return df
+    except Exception as e:
+        st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
+        return pd.DataFrame()
 
 
 def save_equipment_data(df: pd.DataFrame):
@@ -135,33 +139,29 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
 
 
 # ---------------------------
-# MAIN PAGE
+# อ่าน query param จาก URL
 # ---------------------------
-st.title("ข้อมูลเครื่องมือห้องปฏิบัติการ")
-
-st.write(
-    "หน้านี้ใช้สำหรับแก้ไขรายละเอียดครุภัณฑ์จากการสแกน QR Code "
-    "ทุกคนที่มีลิงก์สามารถแก้ไขข้อมูลได้โดยไม่ต้องล็อกอิน"
-)
-
-# อ่าน query param จาก URL (เช่น ?code=LAB-AS-GN-A001)
 try:
     query_params = st.query_params
 except Exception:
     query_params = st.experimental_get_query_params()
 
 if isinstance(query_params, dict):
-    asset_code_from_url = query_params.get("code", [""])[0].strip()
+    asset_code_from_url = (query_params.get("code", [""]) or [""])[0].strip()
 else:
-    asset_code_from_url = ""
+    val = query_params.get("code")
+    if isinstance(val, list):
+        asset_code_from_url = val[0].strip() if val else ""
+    else:
+        asset_code_from_url = str(val or "").strip()
 
+# ---------------------------
+# โหลดข้อมูลจาก Excel
+# ---------------------------
 df = load_equipment_data()
 if df.empty:
-    st.error("ไม่พบไฟล์ Excel สำหรับข้อมูลครุภัณฑ์ (ในโฟลเดอร์ data)")
+    st.error("ไม่พบข้อมูลครุภัณฑ์ในไฟล์ Excel")
     st.stop()
-
-# ชื่อคอลัมน์ที่เก็บรหัสที่ใช้ใน QR
-ASSET_CODE_COL = "รหัสเครื่องมือห้องปฏิบัติการ"
 
 if ASSET_CODE_COL not in df.columns:
     st.error(f"ไม่พบคอลัมน์ '{ASSET_CODE_COL}' ในไฟล์ Excel")
@@ -177,12 +177,14 @@ if asset_code_from_url:
     if matches:
         selected_index = matches[0]
 
+
 # ถ้าไม่มี code หรือหาไม่เจอ ให้เลือกจาก selectbox
 def format_option(i: int) -> str:
     row = df.iloc[i]
     name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
     code = str(row.get(ASSET_CODE_COL, ""))
     return f"{i+1:03d} - {name} ({code})"
+
 
 all_indices = list(df.index)
 
@@ -194,65 +196,74 @@ st.markdown("### เลือกครุภัณฑ์ที่ต้องก
 selected_index = st.selectbox(
     "เลือกครุภัณฑ์จากรายการ",
     options=all_indices,
-    index=selected_index,
     format_func=format_option,
-    key="equip_select_public",
+    index=all_indices.index(selected_index),
 )
 
-row = df.iloc[selected_index].copy()
+row = df.iloc[selected_index]
 asset_code = str(row.get(ASSET_CODE_COL, ""))
 
 st.markdown("---")
-st.markdown("### ฟอร์มรายละเอียด")
 
-col_form_left, col_form_right = st.columns([1.4, 1])
+col_form_left, col_form_right = st.columns([1.4, 1.0])
 
 # ---------------------------
-# ฟอร์มข้อมูลทั่วไป
+# ฝั่งซ้าย: ฟอร์มแก้ไขข้อมูล
 # ---------------------------
 with col_form_left:
-    # รายชื่อคอลัมน์ที่ให้แก้ไขได้ (เหมือนฝั่ง admin)
-    editable_cols_order = [
-        "ลำดับ",
-        "ชื่อ",
-        "ยี่ห้อ",
+    name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
+    st.markdown(f"## รายละเอียดครุภัณฑ์<br><span style='font-size:15px;color:#6b7280'>รหัส: {asset_code}</span>", unsafe_allow_html=True)
+
+    excluded_cols = {
         ASSET_CODE_COL,
-        "โมเดล",
-        "หมายเลขเครื่อง",
-        "ประเภทครุภัณฑ์",
-        "ต้นทุนต่อหน่วย",
-        "ชนิดของครุภัณฑ์",
-        "สถานะ",
-        "AssetID",
-        "ปี",
-        "สถานที่ใช้งาน (ปัจจุบัน)",
-        "ผู้รับผิดชอบ (ปัจจุบัน)",
-        "รหัสงานเครื่องมือแพทย์",
+        "รูปภาพครุภัณฑ์",
         "สถานะแจ้งซ่อม",
-    ]
+        "_qr_image_path",
+        "QR Code",
+    }
+
+    editable_cols = [c for c in df.columns if c not in excluded_cols]
+
+    half = (len(editable_cols) + 1) // 2
+    left_cols = editable_cols[:half]
+    right_cols = editable_cols[half:]
 
     updated_values: dict[str, str] = {}
-    for col_name in editable_cols_order:
-        if col_name not in df.columns:
-            continue
-        current_val = row.get(col_name, "")
-        if col_name == "สถานะแจ้งซ่อม":
-            current_str = "" if pd.isna(current_val) else str(current_val)
-            if current_str not in STATUS_MAINT_CHOICES:
-                current_str = STATUS_MAINT_CHOICES[0]
-            new_val = st.selectbox(
-                "สถานะแจ้งซ่อม",
-                STATUS_MAINT_CHOICES,
-                index=STATUS_MAINT_CHOICES.index(current_str),
-                key=f"status_maint_{selected_index}",
-            )
-        else:
+
+    col_l, col_r = st.columns(2)
+
+    with col_l:
+        for col_name in left_cols:
+            current_val = row.get(col_name, "")
             new_val = st.text_input(
                 col_name,
                 value="" if pd.isna(current_val) else str(current_val),
-                key=f"field_{col_name}_{selected_index}",
+                key=f"field_left_{col_name}_{selected_index}",
             )
-        updated_values[col_name] = new_val
+            updated_values[col_name] = new_val
+
+    with col_r:
+        for col_name in right_cols:
+            current_val = row.get(col_name, "")
+            if col_name == "สถานะแจ้งซ่อม":
+                current_str = str(
+                    row.get("สถานะแจ้งซ่อม", STATUS_MAINT_CHOICES[0]) or ""
+                )
+                if current_str not in STATUS_MAINT_CHOICES:
+                    current_str = STATUS_MAINT_CHOICES[0]
+                new_val = st.selectbox(
+                    "สถานะแจ้งซ่อม",
+                    STATUS_MAINT_CHOICES,
+                    index=STATUS_MAINT_CHOICES.index(current_str),
+                    key=f"status_maint_{selected_index}",
+                )
+            else:
+                new_val = st.text_input(
+                    col_name,
+                    value="" if pd.isna(current_val) else str(current_val),
+                    key=f"field_{col_name}_{selected_index}",
+                )
+            updated_values[col_name] = new_val
 
 # ---------------------------
 # ฝั่งขวา: QR Code + รูปภาพ + ดาวน์โหลด QR
@@ -343,4 +354,4 @@ if st.button("บันทึกการแก้ไข", type="primary", use_c
     save_equipment_data(df_current)
 
     st.success("บันทึกการแก้ไขเรียบร้อยแล้ว (ทั้งหน้า QR และหน้าแอดมินจะเห็นข้อมูลเหมือนกัน)")
-    st.experimental_rerun()
+    st.rerun()  # ใช้ st.rerun เพื่อรีเฟรชหน้าใหม่หลังบันทึก
