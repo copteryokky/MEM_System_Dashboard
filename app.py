@@ -49,21 +49,6 @@ CAL_PLAN_SIMPLE_NAME = "calibration_plan_simple.xlsx"
 CAL_PLAN_SIMPLE_PATH = DATA_DIR / CAL_PLAN_SIMPLE_NAME
 CAL_ORIGINAL_NAME = "แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx"
 
-
-# =========================
-# Helpers: Query Params (สำหรับจำ login + รับ code จาก QR)
-# =========================
-def get_query_params():
-    """อ่าน query params (ใช้ experimental_* ให้รองรับได้กว้าง)"""
-    return st.experimental_get_query_params()
-
-
-def set_query_params_safe(**params):
-    """เซ็ต query params ใหม่ (ใช้สำหรับเก็บ user / display_name / logged)"""
-    clean = {k: v for k, v in params.items() if v is not None}
-    st.experimental_set_query_params(**clean)
-
-
 # =========================
 # STYLE: Landing
 # =========================
@@ -207,7 +192,6 @@ def set_landing_style():
         unsafe_allow_html=True,
     )
 
-
 # =========================
 # STYLE: Login
 # =========================
@@ -282,7 +266,6 @@ def set_login_style():
         """,
         unsafe_allow_html=True,
     )
-
 
 # =========================
 # STYLE: Main app
@@ -549,7 +532,6 @@ def set_main_style():
         unsafe_allow_html=True,
     )
 
-
 # =========================
 # Excel helpers (ครุภัณฑ์)
 # =========================
@@ -627,7 +609,6 @@ def save_equipment_data(df: pd.DataFrame):
         st.success(f"บันทึกการแก้ไขลงไฟล์: {path.name} เรียบร้อยแล้ว")
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
-
 
 # =========================
 # Helpers สำหรับ "แจ้งซ่อม / บำรุงรักษา"
@@ -814,7 +795,6 @@ def ensure_request_dates(df: pd.DataFrame):
     df_new.loc[mask_need, MAINT_REQUEST_DATE_COL] = today.date()
     return df_new, int(mask_need.sum())
 
-
 # =========================
 # Helpers สำหรับ "แผนสอบเทียบ"
 # =========================
@@ -916,7 +896,6 @@ def import_calibration_from_uploaded(uploaded_file) -> pd.DataFrame:
             except Exception:
                 pass
 
-
 # =========================
 # รูป & QR helpers
 # =========================
@@ -962,7 +941,6 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
     img.save(buf, format="PNG")
     buf.seek(0)
     return buf.getvalue()
-
 
 # =========================
 # Landing page
@@ -1048,7 +1026,6 @@ def landing_page():
         st.session_state.view = "login"
         st.rerun()
 
-
 # =========================
 # Login page
 # =========================
@@ -1078,8 +1055,6 @@ def login_page():
     if back_clicked:
         st.session_state.view = "landing"
         st.session_state.logged_in = False
-        # เคลียร์ query params เมื่อกลับหน้าแรก
-        set_query_params_safe()
         st.rerun()
 
     if login_clicked:
@@ -1089,18 +1064,9 @@ def login_page():
             st.session_state.username = username
             st.session_state.display_name = display_name
             st.session_state.view = "app"
-
-            # เก็บสถานะ login ไว้ใน URL เพื่อกันหลุดเวลา F5
-            set_query_params_safe(
-                user=username,
-                display_name=display_name,
-                logged="1",
-            )
-
             st.rerun()
         else:
             st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
-
 
 # =========================
 # Helper: Altair style
@@ -1114,7 +1080,6 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
             fill="#FFFFFF",
         )
     )
-
 
 # =========================
 # หน้า "หน้าหลัก"
@@ -1343,7 +1308,6 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 # =========================
 # ตาราง + เลือกแถว
 # =========================
@@ -1368,7 +1332,6 @@ def equipment_table_with_selection(df: pd.DataFrame):
 
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
-
 
 # =========================
 # หน้า "รายการครุภัณฑ์"
@@ -1569,8 +1532,6 @@ def page_equipment_list():
             with open(qr_path, "rb") as f:
                 qr_bytes_for_download = f.read()
         else:
-            # URL เดิมของแอป QR ถ้าคุณจะให้ยิงกลับมาที่แอปหลัก
-            # ให้เปลี่ยนเป็น URL ใหม่ของระบบคุณได้เลย
             url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
             qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
             st.image(qr_bytes_for_download, use_column_width=True)
@@ -1633,7 +1594,6 @@ def page_equipment_list():
 
         save_equipment_data(df_current)
         st.rerun()
-
 
 # =========================
 # หน้า "แจ้งซ่อม / บำรุงรักษา"
@@ -1856,7 +1816,6 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 # =========================
 # หน้า "แผนสอบเทียบ"
 # =========================
@@ -2058,7 +2017,6 @@ def page_calibration():
         save_calibration_plan(edited_df)
         st.rerun()
 
-
 # =========================
 # หน้า "รายงานสรุป"
 # =========================
@@ -2069,7 +2027,6 @@ def page_summary():
         unsafe_allow_html=True,
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
-
 
 # =========================
 # Main app (หลัง login)
@@ -2119,21 +2076,12 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            # ลบค่าทั้งหมดใน session_state
             keep_keys = []
             for k in list(st.session_state.keys()):
                 if k not in keep_keys:
                     del st.session_state[k]
-
-            # ตั้งค่าเบื้องต้นกลับไปหน้า landing
             st.session_state.logged_in = False
             st.session_state.view = "landing"
-            st.session_state.current_menu = "หน้าหลัก"
-            st.session_state.selected_row_idx = 0
-
-            # เคลียร์ query params ออกจาก URL (กัน auto-login หลังจาก Logout)
-            set_query_params_safe()
-
             st.rerun()
 
     menu = st.session_state.get("current_menu", "หน้าหลัก")
@@ -2149,11 +2097,9 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
-
 # =========================
 # ENTRY POINT
 # =========================
-# ค่าเริ่มต้นใน session_state
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "view" not in st.session_state:
@@ -2163,31 +2109,6 @@ if "current_menu" not in st.session_state:
 if "selected_row_idx" not in st.session_state:
     st.session_state.selected_row_idx = 0
 
-# --------- NEW: ดึงสถานะจาก URL (กันหลุด login + รองรับ ?code=...) ---------
-params = get_query_params()
-
-user_param = params.get("user", [None])[0]
-display_param = params.get("display_name", [None])[0]
-logged_param = params.get("logged", [None])[0]
-code_param = params.get("code", [None])[0]
-
-# ถ้า URL บอกว่า logged=1 และมี user ให้ auto login
-if not st.session_state.logged_in and logged_param in ("1", "true", "True") and user_param:
-    st.session_state.logged_in = True
-    st.session_state.username = user_param
-    st.session_state.display_name = display_param or user_param
-    st.session_state.view = "app"
-
-# ถ้ามี code จาก QR → เซ็ตให้เลือกแถวนั้นใน "รายการครุภัณฑ์"
-if code_param:
-    df_temp = load_equipment_data()
-    if not df_temp.empty and ASSET_CODE_COL in df_temp.columns:
-        matches = df_temp.index[df_temp[ASSET_CODE_COL].astype(str) == str(code_param)].tolist()
-        if matches:
-            st.session_state.selected_row_idx = matches[0]
-            st.session_state.current_menu = "รายการครุภัณฑ์"
-
-# --------- Routing หลัก ---------
 if st.session_state.logged_in:
     main_app()
 else:
