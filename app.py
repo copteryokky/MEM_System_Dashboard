@@ -4,7 +4,7 @@ import altair as alt
 from pathlib import Path
 from io import BytesIO
 import qrcode
-import calendar as pycal   # 👈 เพิ่มใช้สร้างปฏิทิน
+import calendar as pycal   # ใช้สร้างปฏิทิน
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -459,30 +459,65 @@ def set_main_style():
             margin-bottom: 0.6rem;
         }
 
-        /* ==== Calibration page styles ==== */
+        /* ==== Calibration page styles (ปฏิทินสวย ๆ) ==== */
         .mem-cal-column{
-            background:#FFFFFF;
+            background: radial-gradient(circle at top left,#eef2ff,#ffffff 55%);
             border-radius:24px;
-            padding:18px 20px;
-            box-shadow:0 18px 40px rgba(15,23,42,0.08);
+            padding:18px 18px 14px 18px;
+            box-shadow:0 18px 40px rgba(15,23,42,0.1);
             border:1px solid #E5E7EB;
             min-height:260px;
+            position:relative;
+            overflow:hidden;
+            margin-bottom:10px;
         }
-        .mem-cal-column-title{
-            font-size:18px;
+        .mem-cal-column::before{
+            content:"";
+            position:absolute;
+            left:-40px;
+            top:-40px;
+            width:110px;
+            height:110px;
+            border-radius:999px;
+            background:radial-gradient(circle,#a5b4fc 0,#eef2ff 60%,transparent 70%);
+            opacity:0.45;
+        }
+        .mem-cal-header{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:8px;
+            margin-bottom:10px;
+            position:relative;
+            z-index:1;
+        }
+        .mem-cal-month{
+            font-size:16px;
             font-weight:700;
-            margin-bottom:8px;
             color:#111827;
         }
-        .mem-cal-column-sub{
-            font-size:12px;
-            color:#6B7280;
-            margin-bottom:12px;
+        .mem-cal-month span{
+            display:inline-block;
+            padding:4px 10px;
+            border-radius:999px;
+            background:#EEF2FFCC;
         }
-
-        /* ปฏิทินในกล่องด้านบน */
+        .mem-cal-badge{
+            font-size:11px;
+            padding:3px 8px;
+            border-radius:999px;
+            background:#1D4ED8;
+            color:#F9FAFB;
+            white-space:nowrap;
+        }
         .mem-cal-calendar{
-            margin-bottom:12px;
+            border-radius:18px;
+            background:#F9FAFF;
+            padding:10px 12px 6px 12px;
+            border:1px dashed #E5E7EB;
+            position:relative;
+            z-index:1;
+            margin-bottom:10px;
         }
         .mem-cal-grid{
             width:100%;
@@ -497,7 +532,7 @@ def set_main_style():
             text-align:center;
         }
         .mem-cal-grid td{
-            padding:3px 0;
+            padding:2px 0 3px 0;
             text-align:center;
         }
         .mem-cal-day{
@@ -506,40 +541,96 @@ def set_main_style():
             justify-content:center;
             width:26px;
             height:26px;
-            border-radius:999px;
+            border-radius:9px;
             font-size:11px;
             color:#4B5563;
+            transition:all .18s ease;
+        }
+        .mem-cal-day:hover{
+            background:#E5E7EB;
+            transform:translateY(-1px);
         }
         .mem-cal-day-event{
             background:linear-gradient(135deg,#4F46E5,#6366F1);
             color:#FFFFFF;
             box-shadow:0 0 0 1px rgba(129,140,248,0.6);
         }
-
+        .mem-cal-day-today{
+            outline:2px solid #0EA5E9;
+            outline-offset:2px;
+            font-weight:700;
+        }
+        .mem-cal-legend{
+            margin-top:6px;
+            display:flex;
+            gap:10px;
+            align-items:center;
+            flex-wrap:wrap;
+            font-size:10px;
+            color:#6B7280;
+        }
+        .mem-cal-dot{
+            width:8px;
+            height:8px;
+            border-radius:999px;
+            display:inline-block;
+            margin-right:4px;
+        }
+        .mem-cal-dot-event{
+            background:linear-gradient(135deg,#4F46E5,#6366F1);
+        }
+        .mem-cal-dot-today{
+            background:#0EA5E9;
+        }
         .mem-cal-item{
             border-radius:18px;
-            padding:10px 12px;
-            margin-bottom:8px;
-            border-left:4px solid #4F46E5;
-            background:#F9FAFB;
+            padding:9px 11px;
+            margin-bottom:7px;
+            border:1px solid #E5E7EB;
+            background:#FFFFFFD9;
+            position:relative;
+            z-index:1;
+        }
+        .mem-cal-item-top{
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:8px;
+            margin-bottom:2px;
         }
         .mem-cal-item-title{
-            font-size:14px;
+            font-size:13px;
             font-weight:600;
+            color:#111827;
+        }
+        .mem-cal-item-pill{
+            font-size:10px;
+            padding:2px 8px;
+            border-radius:999px;
+            white-space:nowrap;
         }
         .mem-cal-item-meta{
-            font-size:11px;
+            font-size:10px;
             color:#6B7280;
         }
         .mem-cal-item-duedate{
-            font-size:12px;
-            margin-top:4px;
+            font-size:11px;
+            margin-top:3px;
+            color:#111827;
+        }
+        .mem-cal-item-note{
+            font-size:10px;
+            margin-top:2px;
+            color:#6B7280;
         }
         .mem-cal-empty{
             font-size:12px;
             color:#9CA3AF;
             padding-top:4px;
+            position:relative;
+            z-index:1;
         }
+
         .mem-cal-summary-row{
             display:flex;
             flex-wrap:wrap;
@@ -1920,6 +2011,7 @@ def page_calibration():
 
     df[due_col] = pd.to_datetime(df[due_col], errors="coerce")
     today = pd.to_datetime(pd.Timestamp.today().normalize())
+    today_date = today.date()
     df["days_left"] = (df[due_col] - today).dt.days
 
     # ===================================================================
@@ -1960,7 +2052,7 @@ def page_calibration():
         """
         แสดงปฏิทิน + รายการเครื่องมือของเดือน target_month
         - ปฏิทินด้านบน (ในกล่องขาว) เน้นวันที่มี Due Date
-        - รายการเครื่องมือ (รูปที่ 2) แสดงด้านล่างในกล่องเดียวกัน
+        - รายการเครื่องมือ แสดงด้านล่างในกล่องเดียวกัน
         """
         month_label = THAI_MONTH_SHORT.get(target_month, str(target_month))
 
@@ -1972,21 +2064,18 @@ def page_calibration():
                 break
 
         with container:
-            st.markdown('<div class="mem-cal-column">', unsafe_allow_html=True)
-            st.markdown(
-                f'<div class="mem-cal-column-title">เดือน {month_label} {target_year}</div>'
-                '<div class="mem-cal-column-sub">'
-                'ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของแผนสอบเทียบ '
-                'เพื่อแสดงปฏิทินและรายการเครื่องมือของเดือนนี้</div>',
-                unsafe_allow_html=True,
-            )
-
+            # ถ้าไม่มีคอลัมน์ของเดือนนี้เลย
             if col_name is None:
-                st.markdown(
-                    '<div class="mem-cal-empty">ไฟล์นี้ยังไม่มีคอลัมน์ของเดือนนี้ในตารางทวนสอบ</div>',
-                    unsafe_allow_html=True,
-                )
-                st.markdown("</div>", unsafe_allow_html=True)
+                html = f"""
+                <div class="mem-cal-column">
+                  <div class="mem-cal-header">
+                    <div class="mem-cal-month"><span>เดือน {month_label} {target_year}</span></div>
+                    <div class="mem-cal-badge">ไม่มีข้อมูลจากตารางทวนสอบ</div>
+                  </div>
+                  <div class="mem-cal-empty">ไฟล์นี้ยังไม่มีคอลัมน์ของเดือนนี้ในตารางทวนสอบ</div>
+                </div>
+                """
+                st.markdown(html, unsafe_allow_html=True)
                 return
 
             series_m = df[col_name]
@@ -2004,6 +2093,7 @@ def page_calibration():
                 )
 
             month_df = df[mask].copy()
+            n_items = len(month_df)
 
             # ===== ปฏิทินด้านบนในกล่อง =====
             # วันที่ที่มี Due Date ในเดือนนี้
@@ -2021,57 +2111,116 @@ def page_calibration():
             cal_obj = pycal.Calendar(firstweekday=0)  # Monday-first
             weeks = cal_obj.monthdayscalendar(target_year, target_month)
 
-            cal_html = '<div class="mem-cal-calendar"><table class="mem-cal-grid"><thead><tr>'
-            for w in weekday_labels:
-                cal_html += f"<th>{w}</th>"
-            cal_html += "</tr></thead><tbody>"
+            header_cells = "".join(f"<th>{w}</th>" for w in weekday_labels)
 
+            cal_rows_html = ""
             for week in weeks:
-                cal_html += "<tr>"
+                cal_rows_html += "<tr>"
                 for day in week:
                     if day == 0:
-                        cal_html += "<td></td>"
+                        cal_rows_html += "<td></td>"
                     else:
-                        cls = "mem-cal-day"
+                        classes = ["mem-cal-day"]
+                        if (
+                            target_year == today_date.year
+                            and target_month == today_date.month
+                            and day == today_date.day
+                        ):
+                            classes.append("mem-cal-day-today")
                         if day in highlight_days:
-                            cls += " mem-cal-day-event"
-                        cal_html += f'<td><div class="{cls}">{day}</div></td>'
-                cal_html += "</tr>"
-            cal_html += "</tbody></table></div>"
+                            classes.append("mem-cal-day-event")
+                        cls = " ".join(classes)
+                        cal_rows_html += f'<td><div class="{cls}">{day}</div></td>'
+                cal_rows_html += "</tr>"
 
-            st.markdown(cal_html, unsafe_allow_html=True)
+            cal_table_html = f"""
+                <table class="mem-cal-grid">
+                  <thead>
+                    <tr>{header_cells}</tr>
+                  </thead>
+                  <tbody>
+                    {cal_rows_html}
+                  </tbody>
+                </table>
+            """
 
-            # ===== รายการเครื่องมือ (รูปที่ 2) =====
+            legend_html = """
+            <div class="mem-cal-legend">
+              <span><span class="mem-cal-dot mem-cal-dot-event"></span>มีนัดสอบเทียบ</span>
+              <span><span class="mem-cal-dot mem-cal-dot-today"></span>วันนี้</span>
+            </div>
+            """
+
+            # ===== รายการเครื่องมือ =====
             if month_df.empty:
-                st.markdown(
-                    '<div class="mem-cal-empty">เดือนนี้ยังไม่มีการสอบเทียบจากตารางทวนสอบ</div>',
-                    unsafe_allow_html=True,
-                )
-                st.markdown("</div>", unsafe_allow_html=True)
-                return
+                items_html = '<div class="mem-cal-empty">เดือนนี้ยังไม่มีการสอบเทียบจากตารางทวนสอบ</div>'
+                count_text = "0 รายการสอบเทียบ"
+            else:
+                parts = []
+                for _, r in month_df.iterrows():
+                    equip = str(r.get("Equipment", "-"))
+                    code = str(r.get("ID Code", "-"))
+                    sn = str(r.get("S/N", "-"))
+                    note = str(r.get("หมายเหตุ", "-")) if "หมายเหตุ" in month_df.columns else "-"
+                    due = r.get(due_col)
+                    if pd.isna(due):
+                        due_str = "ไม่ระบุ"
+                    else:
+                        due_str = due.strftime("%d/%m/%Y")
 
-            for _, r in month_df.iterrows():
-                equip = str(r.get("Equipment", "-"))
-                code = str(r.get("ID Code", "-"))
-                sn = str(r.get("S/N", "-"))
-                note = str(r.get("หมายเหตุ", "-")) if "หมายเหตุ" in month_df.columns else "-"
-                due = r.get(due_col)
-                if pd.isna(due):
-                    due_str = "ไม่ระบุ"
-                else:
-                    due_str = due.strftime("%d/%m/%Y")
+                    days = r.get("days_left", pd.NA)
+                    pill_bg = "#E5E7EB"
+                    pill_color = "#111827"
+                    status_text = "ไม่ระบุ"
 
-                html_item = f"""
-                <div class="mem-cal-item">
-                    <div class="mem-cal-item-title">{equip}</div>
-                    <div class="mem-cal-item-meta">ID: {code} | S/N: {sn}</div>
-                    <div class="mem-cal-item-duedate">กำหนดสอบเทียบ: {due_str}</div>
-                    <div class="mem-cal-item-meta">หมายเหตุ: {note}</div>
-                </div>
-                """
-                st.markdown(html_item, unsafe_allow_html=True)
+                    if pd.notna(days):
+                        d_int = int(days)
+                        if d_int < 0:
+                            pill_bg = "#FEE2E2"
+                            pill_color = "#B91C1C"
+                            status_text = "เลยกำหนด"
+                        elif d_int <= 30:
+                            pill_bg = "#FFEDD5"
+                            pill_color = "#9A3412"
+                            status_text = "ใกล้กำหนด"
+                        elif d_int <= 90:
+                            pill_bg = "#EDE9FE"
+                            pill_color = "#6B21A8"
+                            status_text = "เตรียม PM"
+                        else:
+                            pill_bg = "#DCFCE7"
+                            pill_color = "#15803D"
+                            status_text = "พร้อมใช้งาน"
 
-            st.markdown("</div>", unsafe_allow_html=True)
+                    item_html = f"""
+                    <div class="mem-cal-item">
+                      <div class="mem-cal-item-top">
+                        <div class="mem-cal-item-title">{equip}</div>
+                        <span class="mem-cal-item-pill" style="background:{pill_bg};color:{pill_color};">{status_text}</span>
+                      </div>
+                      <div class="mem-cal-item-meta">ID: {code} | S/N: {sn}</div>
+                      <div class="mem-cal-item-duedate">กำหนดสอบเทียบ: {due_str}</div>
+                      <div class="mem-cal-item-note">หมายเหตุ: {note}</div>
+                    </div>
+                    """
+                    parts.append(item_html)
+                items_html = "".join(parts)
+                count_text = f"{n_items} รายการสอบเทียบ"
+
+            full_html = f"""
+            <div class="mem-cal-column">
+              <div class="mem-cal-header">
+                <div class="mem-cal-month"><span>เดือน {month_label} {target_year}</span></div>
+                <div class="mem-cal-badge">{count_text}</div>
+              </div>
+              <div class="mem-cal-calendar">
+                {cal_table_html}
+                {legend_html}
+              </div>
+              {items_html}
+            </div>
+            """
+            st.markdown(full_html, unsafe_allow_html=True)
 
     if month_cols:
         st.markdown(
