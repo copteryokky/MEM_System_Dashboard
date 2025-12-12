@@ -4,8 +4,7 @@ import altair as alt
 from pathlib import Path
 from io import BytesIO
 import qrcode
-import calendar
-from streamlit.components.v1 import html as st_html
+import calendar as pycal   # 👈 เพิ่มใช้สร้างปฏิทิน
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -460,7 +459,87 @@ def set_main_style():
             margin-bottom: 0.6rem;
         }
 
-        /* ==== Calibration summary styles ==== */
+        /* ==== Calibration page styles ==== */
+        .mem-cal-column{
+            background:#FFFFFF;
+            border-radius:24px;
+            padding:18px 20px;
+            box-shadow:0 18px 40px rgba(15,23,42,0.08);
+            border:1px solid #E5E7EB;
+            min-height:260px;
+        }
+        .mem-cal-column-title{
+            font-size:18px;
+            font-weight:700;
+            margin-bottom:8px;
+            color:#111827;
+        }
+        .mem-cal-column-sub{
+            font-size:12px;
+            color:#6B7280;
+            margin-bottom:12px;
+        }
+
+        /* ปฏิทินในกล่องด้านบน */
+        .mem-cal-calendar{
+            margin-bottom:12px;
+        }
+        .mem-cal-grid{
+            width:100%;
+            border-collapse:collapse;
+            table-layout:fixed;
+        }
+        .mem-cal-grid th{
+            font-size:11px;
+            font-weight:600;
+            color:#6B7280;
+            padding:2px 0 6px 0;
+            text-align:center;
+        }
+        .mem-cal-grid td{
+            padding:3px 0;
+            text-align:center;
+        }
+        .mem-cal-day{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            width:26px;
+            height:26px;
+            border-radius:999px;
+            font-size:11px;
+            color:#4B5563;
+        }
+        .mem-cal-day-event{
+            background:linear-gradient(135deg,#4F46E5,#6366F1);
+            color:#FFFFFF;
+            box-shadow:0 0 0 1px rgba(129,140,248,0.6);
+        }
+
+        .mem-cal-item{
+            border-radius:18px;
+            padding:10px 12px;
+            margin-bottom:8px;
+            border-left:4px solid #4F46E5;
+            background:#F9FAFB;
+        }
+        .mem-cal-item-title{
+            font-size:14px;
+            font-weight:600;
+        }
+        .mem-cal-item-meta{
+            font-size:11px;
+            color:#6B7280;
+        }
+        .mem-cal-item-duedate{
+            font-size:12px;
+            margin-top:4px;
+        }
+        .mem-cal-empty{
+            font-size:12px;
+            color:#9CA3AF;
+            padding-top:4px;
+        }
         .mem-cal-summary-row{
             display:flex;
             flex-wrap:wrap;
@@ -1102,7 +1181,6 @@ def page_home():
     alt_color_scale = alt.Scale(
         domain=list(color_map.keys()),
         range=[color_map[k] for k in color_map.keys()],
-
     )
 
     loc_col = "สถานที่ใช้งาน (ปัจจุบัน)"
@@ -1776,7 +1854,7 @@ def page_maintenance():
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================
-# หน้า "แผนสอบเทียบ" – ปฏิทินสวยงาม
+# หน้า "แผนสอบเทียบ" (ปฏิทินเดือนนี้ + เดือนหน้า)
 # =========================
 def page_calibration():
     set_main_style()
@@ -1844,197 +1922,183 @@ def page_calibration():
     today = pd.to_datetime(pd.Timestamp.today().normalize())
     df["days_left"] = (df[due_col] - today).dt.days
 
-    # =========================
-    # 🗓 ปฏิทินสวย ๆ เดือนนี้ + เดือนหน้า
-    # =========================
-    THAI_MONTH_FULL = {
-        1: "มกราคม",
-        2: "กุมภาพันธ์",
-        3: "มีนาคม",
-        4: "เมษายน",
-        5: "พฤษภาคม",
-        6: "มิถุนายน",
-        7: "กรกฎาคม",
-        8: "สิงหาคม",
-        9: "กันยายน",
-        10: "ตุลาคม",
-        11: "พฤศจิกายน",
-        12: "ธันวาคม",
-    }
-    THAI_WEEKDAY = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"]
+    # ===================================================================
+    # 🗓 ปฏิทินเดือนปัจจุบัน + เดือนหน้า จาก "ตารางทวนสอบ" (คอลัมน์ 1–12)
+    # ===================================================================
+    month_cols: list[tuple[int, str]] = []
+    for c in df.columns:
+        s = str(c).strip()
+        if s.isdigit():
+            m = int(s)
+            if 1 <= m <= 12:
+                month_cols.append((m, c))
+    month_cols.sort(key=lambda x: x[0])
 
     current_month = int(today.month)
     current_year = int(today.year)
     next_month = 1 if current_month == 12 else current_month + 1
     next_year = current_year + 1 if current_month == 12 else current_year
 
-    def build_events_map(target_month: int, target_year: int) -> dict[int, list[str]]:
-        events: dict[int, list[str]] = {}
-        for _, r in df.iterrows():
-            due = r.get(due_col)
-            if pd.isna(due):
-                continue
-            try:
-                d = pd.to_datetime(due).date()
-            except Exception:
-                continue
-            if d.month == target_month and d.year == target_year:
-                day = int(d.day)
-                equip = str(r.get("Equipment", "-"))
-                code = str(r.get("ID Code", "-"))
-                events.setdefault(day, []).append(f"{equip} ({code})")
-        return events
+    THAI_MONTH_SHORT = {
+        1: "ม.ค.",
+        2: "ก.พ.",
+        3: "มี.ค.",
+        4: "เม.ย.",
+        5: "พ.ค.",
+        6: "มิ.ย.",
+        7: "ก.ค.",
+        8: "ส.ค.",
+        9: "ก.ย.",
+        10: "ต.ค.",
+        11: "พ.ย.",
+        12: "ธ.ค.",
+    }
 
-    def render_month_calendar(container, target_month: int, target_year: int):
-        events = build_events_map(target_month, target_year)
-        be_year = target_year + 543
-        title = f"เดือน {THAI_MONTH_FULL.get(target_month, target_month)} {be_year}"
+    weekday_labels = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"]
 
-        cal = calendar.Calendar(firstweekday=0)  # 0 = Monday
-        weeks = cal.monthdayscalendar(target_year, target_month)
+    def render_month_plan(container, target_month: int, target_year: int):
+        """
+        แสดงปฏิทิน + รายการเครื่องมือของเดือน target_month
+        - ปฏิทินด้านบน (ในกล่องขาว) เน้นวันที่มี Due Date
+        - รายการเครื่องมือ (รูปที่ 2) แสดงด้านล่างในกล่องเดียวกัน
+        """
+        month_label = THAI_MONTH_SHORT.get(target_month, str(target_month))
 
-        # HTML ภายใน iframe (พร้อม CSS)
-        html_parts = [
-            """
-            <html>
-            <head>
-              <meta charset="utf-8" />
-              <style>
-                body {
-                  margin: 0;
-                  padding: 0;
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Sarabun', sans-serif;
-                  background: transparent;
-                }
-                .cal-card {
-                  background:#ffffff;
-                  border-radius:24px;
-                  padding:14px 16px 16px 16px;
-                  box-shadow:0 18px 40px rgba(15,23,42,0.12);
-                  border:1px solid #e5e7eb;
-                }
-                .cal-title {
-                  font-size:14px;
-                  font-weight:700;
-                  color:#111827;
-                  margin-bottom:2px;
-                }
-                .cal-sub {
-                  font-size:11px;
-                  color:#6b7280;
-                  margin-bottom:10px;
-                }
-                .cal-grid {
-                  display:grid;
-                  grid-template-columns: repeat(7, 1fr);
-                  gap:4px;
-                  font-size:11px;
-                }
-                .cal-day-header {
-                  text-align:center;
-                  padding:4px 0;
-                  font-weight:600;
-                  color:#6b7280;
-                }
-                .cal-day {
-                  min-height:40px;
-                  border-radius:10px;
-                  background:#f9fafb;
-                  padding:3px 4px 2px 4px;
-                  display:flex;
-                  flex-direction:column;
-                  box-sizing:border-box;
-                }
-                .cal-day.has-event {
-                  background:linear-gradient(135deg,#eef2ff,#e0f2fe);
-                  border:1px solid #6366f1;
-                }
-                .cal-day-num {
-                  font-size:11px;
-                  font-weight:600;
-                  color:#4b5563;
-                  display:flex;
-                  align-items:center;
-                }
-                .badge-count {
-                  margin-left:4px;
-                  padding:0 6px;
-                  border-radius:999px;
-                  background:#eef2ff;
-                  color:#4f46e5;
-                  font-size:10px;
-                  font-weight:600;
-                }
-                .cal-day-items {
-                  margin-top:2px;
-                  font-size:9px;
-                  line-height:1.25;
-                  color:#0f172a;
-                }
-              </style>
-            </head>
-            <body>
-            """
-        ]
-
-        html_parts.append('<div class="cal-card">')
-        html_parts.append(f'<div class="cal-title">{title}</div>')
-        html_parts.append(
-            '<div class="cal-sub">อ้างอิงจาก Due Date ในแผนสอบเทียบ วันที่มีรายการสอบเทียบจะแสดงเป็นสีไฮไลต์</div>'
-        )
-
-        html_parts.append('<div class="cal-grid">')
-        # header row
-        for wname in THAI_WEEKDAY:
-            html_parts.append(f'<div class="cal-day-header">{wname}</div>')
-
-        # days
-        for week in weeks:
-            for day in week:
-                if day == 0:
-                    html_parts.append('<div class="cal-day"></div>')
-                else:
-                    items = events.get(day, [])
-                    cls = "cal-day has-event" if items else "cal-day"
-                    html_parts.append(f'<div class="{cls}">')
-                    html_parts.append('<div class="cal-day-num">')
-                    html_parts.append(str(day))
-                    if items:
-                        html_parts.append(f'<span class="badge-count">{len(items)}</span>')
-                    html_parts.append('</div>')
-                    if items:
-                        short_items = []
-                        for it in items[:3]:
-                            short_items.append(it if len(it) <= 26 else it[:24] + "…")
-                        html_parts.append(
-                            '<div class="cal-day-items">' + "<br>".join(short_items) + "</div>"
-                        )
-                    html_parts.append("</div>")
-
-        html_parts.append("</div></div></body></html>")
-        final_html = "".join(html_parts)
+        # หา column ที่ตรงกับเดือนนี้ (เช่น เดือน 9 → คอลัมน์ '9')
+        col_name = None
+        for m, col in month_cols:
+            if m == target_month:
+                col_name = col
+                break
 
         with container:
-            st_html(final_html, height=280, scrolling=False)
+            st.markdown('<div class="mem-cal-column">', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="mem-cal-column-title">เดือน {month_label} {target_year}</div>'
+                '<div class="mem-cal-column-sub">'
+                'ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของแผนสอบเทียบ '
+                'เพื่อแสดงปฏิทินและรายการเครื่องมือของเดือนนี้</div>',
+                unsafe_allow_html=True,
+            )
 
-    st.markdown(
-        """
-        <div class="mem-card">
-            <div class="mem-card-title">ปฏิทินแผนสอบเทียบ (เดือนปัจจุบันและเดือนถัดไป)</div>
-            <div class="mem-card-subtitle">
-                แสดงปฏิทินแบบดูง่าย ไฮไลต์วันที่มี Due Date สอบเทียบ พร้อมชื่อเครื่องมือแบบย่อภายในกล่องวัน
-            </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    col_curr, col_next = st.columns(2)
-    render_month_calendar(col_curr, current_month, current_year)
-    render_month_calendar(col_next, next_month, next_year)
-    st.markdown("</div>", unsafe_allow_html=True)
+            if col_name is None:
+                st.markdown(
+                    '<div class="mem-cal-empty">ไฟล์นี้ยังไม่มีคอลัมน์ของเดือนนี้ในตารางทวนสอบ</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+                return
 
-    # =========================
-    # สถานะตาม Due M/D/Y (สรุปตัวเลขด้านล่าง)
-    # =========================
+            series_m = df[col_name]
+
+            # ค่าที่ไม่ใช่ 0 / ไม่ว่าง / ไม่ None → ถือว่ามีแผนสอบเทียบ
+            if pd.api.types.is_numeric_dtype(series_m):
+                mask = series_m.fillna(0) > 0
+            else:
+                s = series_m.astype(str).str.strip()
+                mask = (
+                    s.notna()
+                    & (s != "")
+                    & (s != "0")
+                    & (s.str.lower() != "none")
+                )
+
+            month_df = df[mask].copy()
+
+            # ===== ปฏิทินด้านบนในกล่อง =====
+            # วันที่ที่มี Due Date ในเดือนนี้
+            highlight_days: set[int] = set()
+            if not month_df.empty and due_col in month_df.columns:
+                due_series = pd.to_datetime(month_df[due_col], errors="coerce")
+                due_series = due_series[
+                    (due_series.dt.month == target_month)
+                    & (due_series.dt.year == target_year)
+                ]
+                highlight_days = set(
+                    due_series.dropna().dt.day.astype(int).tolist()
+                )
+
+            cal_obj = pycal.Calendar(firstweekday=0)  # Monday-first
+            weeks = cal_obj.monthdayscalendar(target_year, target_month)
+
+            cal_html = '<div class="mem-cal-calendar"><table class="mem-cal-grid"><thead><tr>'
+            for w in weekday_labels:
+                cal_html += f"<th>{w}</th>"
+            cal_html += "</tr></thead><tbody>"
+
+            for week in weeks:
+                cal_html += "<tr>"
+                for day in week:
+                    if day == 0:
+                        cal_html += "<td></td>"
+                    else:
+                        cls = "mem-cal-day"
+                        if day in highlight_days:
+                            cls += " mem-cal-day-event"
+                        cal_html += f'<td><div class="{cls}">{day}</div></td>'
+                cal_html += "</tr>"
+            cal_html += "</tbody></table></div>"
+
+            st.markdown(cal_html, unsafe_allow_html=True)
+
+            # ===== รายการเครื่องมือ (รูปที่ 2) =====
+            if month_df.empty:
+                st.markdown(
+                    '<div class="mem-cal-empty">เดือนนี้ยังไม่มีการสอบเทียบจากตารางทวนสอบ</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+                return
+
+            for _, r in month_df.iterrows():
+                equip = str(r.get("Equipment", "-"))
+                code = str(r.get("ID Code", "-"))
+                sn = str(r.get("S/N", "-"))
+                note = str(r.get("หมายเหตุ", "-")) if "หมายเหตุ" in month_df.columns else "-"
+                due = r.get(due_col)
+                if pd.isna(due):
+                    due_str = "ไม่ระบุ"
+                else:
+                    due_str = due.strftime("%d/%m/%Y")
+
+                html_item = f"""
+                <div class="mem-cal-item">
+                    <div class="mem-cal-item-title">{equip}</div>
+                    <div class="mem-cal-item-meta">ID: {code} | S/N: {sn}</div>
+                    <div class="mem-cal-item-duedate">กำหนดสอบเทียบ: {due_str}</div>
+                    <div class="mem-cal-item-meta">หมายเหตุ: {note}</div>
+                </div>
+                """
+                st.markdown(html_item, unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    if month_cols:
+        st.markdown(
+            """
+            <div class="mem-card">
+                <div class="mem-card-title">ปฏิทินแผนสอบเทียบ (เดือนปัจจุบันและเดือนหน้า)</div>
+                <div class="mem-card-subtitle">
+                    ใช้ข้อมูลจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของไฟล์แผนสอบเทียบ
+                    แสดงปฏิทินในกล่องด้านบน และรายการเครื่องมือในเดือนนั้นในกล่องเดียวกัน
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        col_curr, col_next = st.columns(2)
+        render_month_plan(col_curr, current_month, current_year)
+        render_month_plan(col_next, next_month, next_year)
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info(
+            "ไฟล์แผนสอบเทียบนี้ยังไม่มีคอลัมน์เดือน (1–12) สำหรับใช้ทำปฏิทิน "
+            "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
+        )
+
+    # ===================================================================
+    # สถานะตาม Due M/D/Y (ใช้ทำสรุปตัวเลขด้านล่าง)
+    # ===================================================================
     def label_status(days):
         if pd.isna(days):
             return "ไม่มีข้อมูล"
@@ -2078,7 +2142,7 @@ def page_calibration():
       </div>
       <div class="mem-cal-summary-card">
         <div class="mem-cal-summary-value" style="color:#A855F7;">{near_pm_cnt}</div>
-        <div class="mem-cal-summary-label">กำหนดในอีก 31–90 วัน (รอบ PM)</div>
+        <div class="mem-cal-summary-label">กำหนดในอีก 31–90 วัน (มองเป็นรอบ PM)</div>
       </div>
       <div class="mem-cal-summary-card">
         <div class="mem-cal-summary-value" style="color:#22C55E;">{ready_cnt}</div>
