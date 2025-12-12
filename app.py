@@ -579,20 +579,13 @@ def set_main_style():
             font-size:12px;
             color:#6B7280;
         }
-        .cal-equip-cards{
-            display:grid;
-            grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-            gap:10px;
-            max-height:420px;
-            overflow-y:auto;
-            padding-right:4px;
-        }
         .cal-equip-card{
             background:#FFFFFF;
             border-radius:20px;
             padding:10px 14px;
             box-shadow:0 14px 30px rgba(15,23,42,0.08);
             border-left:4px solid #4F46E5;
+            margin-bottom:10px;
         }
         .cal-equip-title{
             font-size:14px;
@@ -1105,6 +1098,7 @@ def landing_page():
 
     if start_btn or login_btn:
         st.session_state.view = "login"
+        st.session_state.logged_in = False
         st.rerun()
 
 # =========================
@@ -1590,8 +1584,7 @@ def page_equipment_list():
     st.markdown("### สถานะแจ้งซ่อม")
     current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
     if current_maint not in MAINT_STATUS_CHOICES:
-        current_maint = MAINT_STATUS_CHOICES[0]
-
+        current_maint = MAINT_STATUS_CHOCHOICES[0]
     maint_select = st.selectbox(
         "สถานะแจ้งซ่อม",
         MAINT_STATUS_CHOICES,
@@ -2146,11 +2139,22 @@ def page_calibration():
             "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
         )
 
-    # ========= รายการเครื่องมือในแผนสอบเทียบ (แบบการ์ด + เลือกเดือน) =========
+    # ========= รายการเครื่องมือในแผนสอบเทียบ (การ์ด + เลือกเดือน) =========
     st.markdown(
         """
         <div class="mem-card">
           <div class="cal-equip-container">
+            <div class="cal-equip-header">
+              <div>
+                <div class="cal-equip-title-main">รายการเครื่องมือในแผนสอบเทียบ</div>
+                <div class="cal-equip-sub">
+                  ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของไฟล์แผนสอบเทียบ
+                  เครื่องมือแต่ละรายการจะแสดง ID, S/N, Due Date และหมายเหตุ
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -2168,46 +2172,26 @@ def page_calibration():
         df.columns, ["note"]
     )
 
-    col_header, col_select = st.columns([2, 1])
-    with col_header:
-        st.markdown(
-            """
-            <div class="cal-equip-header">
-              <div>
-                <div class="cal-equip-title-main">รายการเครื่องมือในแผนสอบเทียบ</div>
-                <div class="cal-equip-sub">
-                  ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของไฟล์แผนสอบเทียบ
-                  เครื่องมือแต่ละรายการจะแสดง ID, S/N, Due Date และหมายเหตุ
-                </div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    # ตัวเลือกเดือนสำหรับการ์ด
+    if month_cols:
+        month_for_cards = st.selectbox(
+            "เลือกเดือนสำหรับแสดงรายการ",
+            options=[m for m, _ in month_cols],
+            index=current_month - 1 if any(m == current_month for m, _ in month_cols) else 0,
+            format_func=lambda m: THAI_MONTH_SHORT.get(m, str(m)),
+            key="cal_month_cards",
         )
-
-    with col_select:
-        if month_cols:
-            month_for_cards = st.selectbox(
-                "เลือกเดือนสำหรับแสดงรายการ",
-                options=[m for m, _ in month_cols],
-                index=current_month - 1 if (current_month, str(current_month)) in month_cols else 0,
-                format_func=lambda m: THAI_MONTH_SHORT.get(m, str(m)),
-                key="cal_month_cards",
-            )
-            mask_cards = _get_month_mask(df, month_cols, month_for_cards)
-            df_cards = df[mask_cards].copy()
-        else:
-            month_for_cards = None
-            df_cards = df.copy()
+        mask_cards = _get_month_mask(df, month_cols, month_for_cards)
+        df_cards = df[mask_cards].copy()
+    else:
+        df_cards = df.copy()
 
     if df_cards.empty:
-        st.markdown(
-            '<div class="cal-equip-sub">เดือนนี้ยังไม่มีเครื่องมือในแผนสอบเทียบ</div>',
-            unsafe_allow_html=True,
-        )
+        st.info("เดือนนี้ยังไม่มีเครื่องมือในแผนสอบเทียบ")
     else:
-        card_html_parts = []
-        for _, r in df_cards.iterrows():
+        # แสดงการ์ดแบบ 2 คอลัมน์
+        cols_cards = st.columns(2)
+        for i, (_, r) in enumerate(df_cards.iterrows()):
             name = str(r.get(equip_col, "-")) if equip_col else "-"
             _id = str(r.get(id_col, "-")) if id_col else "-"
             sn = str(r.get(sn_col, "-")) if sn_col else "-"
@@ -2221,21 +2205,16 @@ def page_calibration():
                 except Exception:
                     due_str = "ไม่ระบุ"
 
-            card_html_parts.append(
-                f"""
-                <div class="cal-equip-card">
-                  <div class="cal-equip-title">{name}</div>
-                  <div class="cal-equip-meta"><span>ID: {_id}</span> | <span>S/N: {sn}</span></div>
-                  <div class="cal-equip-meta">กำหนดสอบเทียบ: {due_str}</div>
-                  <div class="cal-equip-note">หมายเหตุ: {note}</div>
-                </div>
-                """
-            )
-
-        cards_html = '<div class="cal-equip-cards">' + "\n".join(card_html_parts) + "</div>"
-        st.markdown(cards_html, unsafe_allow_html=True)
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
+            card_html = f"""
+            <div class="cal-equip-card">
+              <div class="cal-equip-title">{name}</div>
+              <div class="cal-equip-meta"><span>ID: {_id}</span> | <span>S/N: {sn}</span></div>
+              <div class="cal-equip-meta">กำหนดสอบเทียบ: {due_str}</div>
+              <div class="cal-equip-note">หมายเหตุ: {note}</div>
+            </div>
+            """
+            with cols_cards[i % 2]:
+                st.markdown(card_html, unsafe_allow_html=True)
 
     # ===================================================================
     # สถานะตาม Due M/D/Y (ใช้ทำสรุปตัวเลขด้านล่าง)
