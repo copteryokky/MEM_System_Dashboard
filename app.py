@@ -1596,200 +1596,284 @@ def page_equipment_list():
         st.rerun()
 
 # =========================
-# หน้า "แจ้งซ่อม / บำรุงรักษา"
+# หน้า "แผนสอบเทียบ"
 # =========================
-def page_maintenance():
+def page_calibration():
     set_main_style()
     st.markdown(
-        '<div class="mem-page-title">แจ้งซ่อม / บำรุงรักษา</div>',
+        """
+        <div style="margin-bottom: 0.2rem;">
+            <div class="mem-page-title">การบำรุงรักษาและการควบคุมคุณภาพ</div>
+            <div class="mem-page-subtitle">
+                แผนการสอบเทียบและบำรุงรักษาเครื่องมือแพทย์ ดึงจากไฟล์ Excel แผนสอบเทียบและบำรุงรักษาเครื่องมือ
+                และสามารถแก้ไข/เพิ่มข้อมูลได้จากหน้านี้
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    df = load_equipment_data()
-    if df.empty:
-        st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
-        return
-
-    # ให้แน่ใจว่ามีคอลัมน์ที่ใช้กับแจ้งซ่อมครบ
-    for col in [
-        MAINT_REQUEST_DATE_COL,
-        MAINT_EST_DAYS_COL,
-        MAINT_DUE_DATE_COL,
-        MAINT_EVAL_COL,
-        MAINT_NOTE_COL,
-    ]:
-        if col not in df.columns:
-            if col == MAINT_EST_DAYS_COL:
-                df[col] = pd.NA
-            elif col == MAINT_EVAL_COL:
-                df[col] = MAINT_EVAL_CHOICES[0]
+    # ----------------- อัปโหลดไฟล์แผนสอบเทียบ -----------------
+    with st.expander("📁 อัปโหลด / แทนที่ไฟล์แผนสอบเทียบ (.xlsx)", expanded=False):
+        uploaded = st.file_uploader(
+            "เลือกไฟล์ Excel ของแผนสอบเทียบ",
+            type=["xlsx", "xls"],
+            key="cal_plan_upload",
+        )
+        if uploaded is not None:
+            df_new = import_calibration_from_uploaded(uploaded)
+            if df_new.empty:
+                st.error("ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบรูปแบบไฟล์อีกครั้ง")
             else:
-                df[col] = ""
+                save_calibration_plan(df_new)
+                st.info("ระบบจะใช้ไฟล์ใหม่นี้สำหรับแผนสอบเทียบต่อไป")
+                st.rerun()
 
-    # เติมวันที่แจ้งซ่อมให้รายการที่สถานะ = "แจ้งซ่อมแล้ว - กำลังดำเนินการ" แต่ยังไม่มีวันที่
-    df_filled, added_dates = ensure_request_dates(df)
-    if added_dates > 0:
-        save_equipment_data(df_filled)
-        df = df_filled
+        cal_file_in_use: Path | None = None
+        if CAL_PLAN_SIMPLE_PATH.exists():
+            cal_file_in_use = CAL_PLAN_SIMPLE_PATH
+        elif (DATA_DIR / CAL_ORIGINAL_NAME).exists():
+            cal_file_in_use = DATA_DIR / CAL_ORIGINAL_NAME
+
+        if cal_file_in_use:
+            st.caption(f"ไฟล์ที่ใช้งานอยู่: **{cal_file_in_use.name}**")
+        else:
+            st.caption("ยังไม่มีไฟล์แผนสอบเทียบในโฟลเดอร์ data")
+
+    # ----------------- โหลดข้อมูลแผนสอบเทียบ -----------------
+    df = load_calibration_plan()
+    if df.empty:
         st.info(
-            f"ระบบได้เติมวันที่แจ้งซ่อม (วันนี้) ให้ {added_dates} รายการที่ยังไม่มีวันที่แจ้งซ่อมแล้ว"
+            "ยังไม่มีข้อมูลแผนสอบเทียบ ให้คัดลอกไฟล์ 'แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx' "
+            "มาไว้ในโฟลเดอร์ data หรืออัปโหลดจากส่วนด้านบน"
         )
-
-    # เคลียร์รายการที่เกินกำหนด (ตามระยะเวลาซ่อมที่กำหนด, ถ้าไม่มีใช้ 7)
-    df_after_expire, expired_count = expire_old_maintenance(df)
-    if expired_count > 0:
-        save_equipment_data(df_after_expire)
-        df = df_after_expire
-        st.warning(
-            f"ระบบได้เคลียร์รายการแจ้งซ่อมที่เกินระยะเวลาซ่อมที่กำหนดแล้วจำนวน {expired_count} รายการ "
-            "ผู้ใช้จำเป็นต้องแจ้งซ่อมใหม่อีกครั้ง"
-        )
-
-    if "สถานะแจ้งซ่อม" not in df.columns:
-        st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
         return
 
-    # ---------- การ์ดที่ 1: ภาพรวมสถานะแจ้งซ่อม ----------
-    maint_counts = build_maintenance_summary(df)
+    # ---- หาคอลัมน์กำหนดสอบเทียบ (Due M/D/Y) ----
+    due_col = "Due M/D/Y"
+    if due_col not in df.columns:
+        for c in df.columns:
+            if isinstance(c, str) and "Due" in c:
+                due_col = c
+                break
+        else:
+            st.warning("ไม่พบคอลัมน์กำหนดสอบเทียบ (Due M/D/Y) ในไฟล์แผนสอบเทียบ")
+            return
 
+    df[due_col] = pd.to_datetime(df[due_col], errors="coerce")
+    today = pd.to_datetime(pd.Timestamp.today().normalize())
+    df["days_left"] = (df[due_col] - today).dt.days
+
+    # ===================================================================
+    # 🗓 ปฏิทินเดือนปัจจุบัน + เดือนหน้า จาก "ตารางทวนสอบ" (คอลัมน์ 1–12)
+    # ===================================================================
+    # หา column ที่เป็นเลขเดือน 1–12 (ในไฟล์จะเห็นเรียงประมาณ 10,11,12,1,2,...,9)
+    month_cols: list[tuple[int, str]] = []
+    for c in df.columns:
+        s = str(c).strip()
+        if s.isdigit():
+            m = int(s)
+            if 1 <= m <= 12:
+                month_cols.append((m, c))
+
+    month_cols.sort(key=lambda x: x[0])
+
+    current_month = int(today.month)
+    current_year = int(today.year)
+    next_month = 1 if current_month == 12 else current_month + 1
+    next_year = current_year + 1 if current_month == 12 else current_year
+
+    THAI_MONTH_SHORT = {
+        1: "ม.ค.",
+        2: "ก.พ.",
+        3: "มี.ค.",
+        4: "เม.ย.",
+        5: "พ.ค.",
+        6: "มิ.ย.",
+        7: "ก.ค.",
+        8: "ส.ค.",
+        9: "ก.ย.",
+        10: "ต.ค.",
+        11: "พ.ย.",
+        12: "ธ.ค.",
+    }
+
+    def render_month_plan(container, target_month: int, target_year: int):
+        """
+        แสดง 'ปฏิทินแบบย่อ' ของเดือน target_month
+        โดยดูจากคอลัมน์เดือนในตารางทวนสอบที่มีค่า = 1 (หรือค่าที่ไม่ใช่ 0/None/ว่าง)
+        """
+        month_label = THAI_MONTH_SHORT.get(target_month, str(target_month))
+
+        # หา column ที่ตรงกับเดือนนี้ (เช่น เดือน 9 → คอลัมน์ '9')
+        col_name = None
+        for m, col in month_cols:
+            if m == target_month:
+                col_name = col
+                break
+
+        with container:
+            st.markdown('<div class="mem-cal-column">', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="mem-cal-column-title">เดือน {month_label} {target_year}</div>'
+                '<div class="mem-cal-column-sub">'
+                'ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) แสดงเฉพาะแถวที่มีค่า = 1 ในเดือนนี้'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            if col_name is None:
+                st.markdown(
+                    '<div class="mem-cal-empty">ไฟล์นี้ยังไม่มีคอลัมน์ของเดือนนี้ในตารางทวนสอบ</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+                return
+
+            series_m = df[col_name]
+
+            # ค่าที่ไม่ใช่ 0 / ไม่ว่าง / ไม่ None → ถือว่ามีแผนสอบเทียบ
+            if pd.api.types.is_numeric_dtype(series_m):
+                mask = series_m.fillna(0) > 0
+            else:
+                s = series_m.astype(str).str.strip()
+                mask = (
+                    s.notna()
+                    & (s != "")
+                    & (s != "0")
+                    & (s.str.lower() != "none")
+                )
+
+            month_df = df[mask].copy()
+
+            if month_df.empty:
+                st.markdown(
+                    '<div class="mem-cal-empty">เดือนนี้ยังไม่มีการสอบเทียบจากตารางทวนสอบ</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+                return
+
+            # แสดงเป็นกล่องๆ (mem-cal-item) แทนตารางธรรมดา
+            for _, r in month_df.iterrows():
+                equip = str(r.get("Equipment", "-"))
+                code = str(r.get("ID Code", "-"))
+                sn = str(r.get("S/N", "-"))
+                note = str(r.get("หมายเหตุ", "-")) if "หมายเหตุ" in month_df.columns else "-"
+                due = r.get(due_col)
+                if pd.isna(due):
+                    due_str = "ไม่ระบุ"
+                else:
+                    due_str = due.strftime("%d/%m/%Y")
+
+                html_item = f"""
+                <div class="mem-cal-item">
+                    <div class="mem-cal-item-title">{equip}</div>
+                    <div class="mem-cal-item-meta">ID: {code} | S/N: {sn}</div>
+                    <div class="mem-cal-item-duedate">กำหนดสอบเทียบ: {due_str}</div>
+                    <div class="mem-cal-item-meta">หมายเหตุ: {note}</div>
+                </div>
+                """
+                st.markdown(html_item, unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # แสดงการ์ดปฏิทินเฉพาะเมื่อมีคอลัมน์เดือน 1–12
+    if month_cols:
+        st.markdown(
+            """
+            <div class="mem-card">
+                <div class="mem-card-title">ปฏิทินแผนสอบเทียบ (เดือนปัจจุบันและเดือนหน้า)</div>
+                <div class="mem-card-subtitle">
+                    ใช้ข้อมูลจากตารางทวนสอบ (คอลัมน์เดือน 1–12) ของไฟล์แผนสอบเทียบ
+                    แสดงรายการที่มีค่า = 1 เฉพาะเดือนปัจจุบันและเดือนถัดไป
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        col_curr, col_next = st.columns(2)
+        render_month_plan(col_curr, current_month, current_year)
+        render_month_plan(col_next, next_month, next_year)
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info(
+            "ไฟล์แผนสอบเทียบนี้ยังไม่มีคอลัมน์เดือน (1–12) สำหรับใช้ทำปฏิทิน "
+            "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
+        )
+
+    # ===================================================================
+    # สถานะตาม Due M/D/Y (ใช้ทำสรุปตัวเลขด้านล่าง)
+    # ===================================================================
+    def label_status(days):
+        if pd.isna(days):
+            return "ไม่มีข้อมูล"
+        days_int = int(days)
+        if days_int < 0:
+            return "เลยกำหนดสอบเทียบ"
+        if days_int <= 30:
+            return "ใกล้ถึงกำหนดสอบเทียบ"
+        if days_int <= 90:
+            return "ใกล้ถึงกำหนด PM"
+        return "พร้อมใช้งาน"
+
+    df["สถานะกำหนด"] = df["days_left"].apply(label_status)
+
+    # --- การ์ดสรุปสถิติ ---
     st.markdown(
         """
         <div class="mem-card">
-            <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
+            <div class="mem-card-title">สรุปสถิติการสอบเทียบและบำรุงรักษา</div>
             <div class="mem-card-subtitle">
-                แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม ดึงข้อมูลจากไฟล์ Excel เดียวกับหน้า QR
-                เมื่อมีการแจ้งซ่อมหรือเปลี่ยนสถานะจากหน้า QR ข้อมูลในหน้านี้จะอัปเดตอัตโนมัติ
+                ใช้กำหนดวันสอบเทียบ (Due M/D/Y) ในการแบ่งกลุ่มรายการที่เลยกำหนด ใกล้ครบกำหนด และยังพร้อมใช้งาน
             </div>
         """,
         unsafe_allow_html=True,
     )
 
-    col_chart, col_table = st.columns([2, 1])
+    overdue_cnt = int((df["สถานะกำหนด"] == "เลยกำหนดสอบเทียบ").sum())
+    near_cal_cnt = int((df["สถานะกำหนด"] == "ใกล้ถึงกำหนดสอบเทียบ").sum())
+    near_pm_cnt = int((df["สถานะกำหนด"] == "ใกล้ถึงกำหนด PM").sum())
+    ready_cnt = int((df["สถานะกำหนด"] == "พร้อมใช้งาน").sum())
 
-    with col_chart:
-        chart = (
-            alt.Chart(maint_counts)
-            .mark_bar()
-            .encode(
-                x=alt.X("สถานะแจ้งซ่อม:N", sort=None, title="สถานะแจ้งซ่อม"),
-                y=alt.Y("จำนวน (รายการ):Q", title="จำนวน (รายการ)"),
-                tooltip=["สถานะแจ้งซ่อม:N", "จำนวน (รายการ):Q"],
-            )
-        )
-        chart = styled_chart(chart, width=500, height=320)
-        st.altair_chart(chart, use_container_width=True)
-
-    with col_table:
-        st.dataframe(
-            maint_counts,
-            hide_index=True,
-            use_container_width=True,
-        )
-
+    summary_html = f"""
+    <div class="mem-cal-summary-row">
+      <div class="mem-cal-summary-card">
+        <div class="mem-cal-summary-value" style="color:#EF4444;">{overdue_cnt}</div>
+        <div class="mem-cal-summary-label">เลยกำหนดสอบเทียบ</div>
+      </div>
+      <div class="mem-cal-summary-card">
+        <div class="mem-cal-summary-value" style="color:#F97316;">{near_cal_cnt}</div>
+        <div class="mem-cal-summary-label">ใกล้ถึงกำหนดสอบเทียบ (ภายใน 30 วัน)</div>
+      </div>
+      <div class="mem-cal-summary-card">
+        <div class="mem-cal-summary-value" style="color:#A855F7;">{near_pm_cnt}</div>
+        <div class="mem-cal-summary-label">กำหนดในอีก 31–90 วัน (มองเป็นรอบ PM)</div>
+      </div>
+      <div class="mem-cal-summary-card">
+        <div class="mem-cal-summary-value" style="color:#22C55E;">{ready_cnt}</div>
+        <div class="mem-cal-summary-label">พร้อมใช้งาน (เกิน 90 วันขึ้นไป)</div>
+      </div>
+    </div>
+    """
+    st.markdown(summary_html, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ---------- การ์ดที่ 2: รายการแจ้งซ่อม + เวลาคงเหลือ ----------
-    st.markdown(
-        """
-        <div class="mem-card">
-            <div class="mem-card-title">รายการแจ้งซ่อมและเวลาคงเหลือ</div>
-            <div class="mem-card-subtitle">
-                ใช้ 'วันที่แจ้งซ่อมล่าสุด' และ 'ระยะเวลาซ่อมที่กำหนด (วัน)' 
-                เพื่อคำนวณจำนวนวันที่ผ่านไปและเวลาเหลือ หากเกินกำหนดและยังอยู่ในสถานะ 
-                'แจ้งซ่อมแล้ว - กำลังดำเนินการ' ระบบจะถือว่าแจ้งซ่อมหมดอายุและตั้งสถานะกลับเป็น 
-                'ยังไม่เคยแจ้งซ่อม' เพื่อให้แจ้งใหม่อีกครั้ง
-            </div>
-        """,
-        unsafe_allow_html=True,
+    # --- ตารางแก้ไขได้ทั้งหมด ---
+    st.markdown("### แผนสอบเทียบทั้งหมด (แก้ไขได้)")
+    editable_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
+    edited_df = st.data_editor(
+        df[editable_cols],
+        key="cal_plan_editor",
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
     )
 
-    timers_df = calculate_maintenance_timers(df)
+    if st.button("💾 บันทึกแผนสอบเทียบทั้งหมด", use_container_width=True):
+        save_calibration_plan(edited_df)
+        st.rerun()
 
-    if timers_df.empty:
-        st.info("ยังไม่มีรายการแจ้งซ่อมที่อยู่ในสถานะ 'แจ้งซ่อมแล้ว - กำลังดำเนินการ' พร้อมข้อมูลวันที่แจ้งซ่อม")
-    else:
-        display_cols = [c for c in timers_df.columns if c != "row_index"]
-        st.dataframe(
-            timers_df[display_cols],
-            hide_index=True,
-            use_container_width=True,
-        )
-
-        excel_bytes = export_maintenance_excel(df)
-        st.download_button(
-            "⬇️ ดาวน์โหลดข้อมูลแจ้งซ่อม (Excel)",
-            data=excel_bytes,
-            file_name="maintenance_report.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            use_container_width=True,
-        )
-
-        st.markdown("---")
-        st.markdown("#### ✅ ยืนยันการรับแจ้งซ่อม / ประเมินผลการซ่อม")
-
-        options = timers_df["row_index"].tolist()
-
-        def format_req(idx: int) -> str:
-            row = df.loc[idx]
-            code = str(row.get(ASSET_CODE_COL, ""))
-            name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
-            return f"{code} - {name}"
-
-        selected_idx = st.selectbox(
-            "เลือกรายการแจ้งซ่อม",
-            options=options,
-            format_func=format_req,
-            key="maint_confirm_select",
-        )
-
-        row_sel = df.loc[selected_idx]
-
-        st.write(f"**รหัสครุภัณฑ์:** {row_sel.get(ASSET_CODE_COL, '-')}")
-        st.write(f"**ชื่อครุภัณฑ์:** {row_sel.get('ชื่อ', '-')}")
-        st.write(f"**วันที่แจ้งซ่อมล่าสุด:** {row_sel.get(MAINT_REQUEST_DATE_COL, '-')}")
-
-        raw_est = row_sel.get(MAINT_EST_DAYS_COL, "")
-        try:
-            default_est = int(raw_est)
-            if default_est <= 0:
-                default_est = 7
-        except Exception:
-            default_est = 7
-
-        est_days_input = st.number_input(
-            "ระยะเวลาซ่อมที่กำหนด (วัน)",
-            min_value=1,
-            max_value=365,
-            value=default_est,
-            step=1,
-            key=f"maint_est_days_{selected_idx}",
-        )
-
-        current_eval = str(row_sel.get(MAINT_EVAL_COL, "") or MAINT_EVAL_CHOICES[0])
-        if current_eval not in MAINT_EVAL_CHOICES:
-            current_eval = MAINT_EVAL_CHOICES[0]
-
-        eval_select = st.selectbox(
-            "ผลการประเมินการซ่อม",
-            MAINT_EVAL_CHOICES,
-            index=MAINT_EVAL_CHOICES.index(current_eval),
-            key=f"maint_eval_select_{selected_idx}",
-        )
-
-        note_default = str(row_sel.get(MAINT_NOTE_COL, "") or "")
-        note = st.text_area(
-            "หมายเหตุเพิ่มเติม (ถ้ามี)",
-            value=note_default,
-            key=f"maint_note_{selected_idx}",
-        )
-
-        if st.button("💾 ยืนยันการรับแจ้งซ่อม / บันทึกข้อมูล", use_container_width=True):
-            df_current = load_equipment_data()
-            if selected_idx not in df_current.index:
-                st.error("ไม่พบแถวข้อมูลนี้ในไฟล์แล้ว กรุณารีเฟรชหน้า")
             else:
                 req_dt = pd.to_datetime(
                     df_current.at[selected_idx, MAINT_REQUEST_DATE_COL],
