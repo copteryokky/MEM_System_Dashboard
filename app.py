@@ -1834,6 +1834,7 @@ def page_calibration():
         unsafe_allow_html=True,
     )
 
+    # ----------------- อัปโหลดไฟล์แผนสอบเทียบ -----------------
     with st.expander("📁 อัปโหลด / แทนที่ไฟล์แผนสอบเทียบ (.xlsx)", expanded=False):
         uploaded = st.file_uploader(
             "เลือกไฟล์ Excel ของแผนสอบเทียบ",
@@ -1860,6 +1861,7 @@ def page_calibration():
         else:
             st.caption("ยังไม่มีไฟล์แผนสอบเทียบในโฟลเดอร์ data")
 
+    # ----------------- โหลดข้อมูลแผนสอบเทียบ -----------------
     df = load_calibration_plan()
     if df.empty:
         st.info(
@@ -1868,7 +1870,7 @@ def page_calibration():
         )
         return
 
-    # หาคอลัมน์กำหนดสอบเทียบ
+    # ---- หาคอลัมน์กำหนดสอบเทียบ (Due M/D/Y) ----
     due_col = "Due M/D/Y"
     if due_col not in df.columns:
         for c in df.columns:
@@ -1883,6 +1885,136 @@ def page_calibration():
     today = pd.to_datetime(pd.Timestamp.today().normalize())
     df["days_left"] = (df[due_col] - today).dt.days
 
+    # ===================================================================
+    # ปฏิทินเดือนปัจจุบัน + เดือนหน้า จาก "ตารางทวนสอบ" (คอลัมน์ 1–12)
+    # ===================================================================
+    # หา column ที่เป็นเลขเดือน 1–12 (ในไฟล์จะเห็นเรียงประมาณ 10,11,12,1,2,...,9)
+    month_cols: list[tuple[int, str]] = []
+    for c in df.columns:
+        s = str(c).strip()
+        if s.isdigit():
+            m = int(s)
+            if 1 <= m <= 12:
+                month_cols.append((m, c))
+
+    month_cols.sort(key=lambda x: x[0])
+
+    current_month = int(today.month)
+    current_year = int(today.year)
+    next_month = 1 if current_month == 12 else current_month + 1
+    next_year = current_year + 1 if current_month == 12 else current_year
+
+    THAI_MONTH_SHORT = {
+        1: "ม.ค.",
+        2: "ก.พ.",
+        3: "มี.ค.",
+        4: "เม.ย.",
+        5: "พ.ค.",
+        6: "มิ.ย.",
+        7: "ก.ค.",
+        8: "ส.ค.",
+        9: "ก.ย.",
+        10: "ต.ค.",
+        11: "พ.ย.",
+        12: "ธ.ค.",
+    }
+
+    def render_month_plan(container, target_month: int, target_year: int):
+        """
+        แสดง 'ตารางปฏิทินแบบย่อ' ของเดือน target_month
+        โดยดูจากคอลัมน์เดือนในตารางทวนสอบที่มีค่า = 1
+        """
+        month_label = THAI_MONTH_SHORT.get(target_month, str(target_month))
+
+        # หา column ที่ตรงกับเดือนนี้ (เช่น เดือน 9 → คอลัมน์ '9')
+        col_name = None
+        for m, col in month_cols:
+            if m == target_month:
+                col_name = col
+                break
+
+        with container:
+            st.markdown('<div class="mem-cal-column">', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="mem-cal-column-title">เดือน {month_label} {target_year}</div>'
+                '<div class="mem-cal-column-sub">'
+                'ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) แสดงเฉพาะแถวที่มีค่า = 1 ในเดือนนี้'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            if col_name is None:
+                st.markdown(
+                    '<div class="mem-cal-empty">ไฟล์นี้ยังไม่มีคอลัมน์ของเดือนนี้ในตารางทวนสอบ</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+                return
+
+            series_m = df[col_name]
+
+            # ค่าที่ไม่ใช่ 0 / ไม่ว่าง → ถือว่ามีแผนสอบเทียบ
+            if pd.api.types.is_numeric_dtype(series_m):
+                mask = series_m.fillna(0) != 0
+            else:
+                s = series_m.astype(str).str.strip()
+                mask = s.replace({"": pd.NA, "0": pd.NA, "None": pd.NA}).notna()
+
+            month_df = df[mask].copy()
+
+            if month_df.empty:
+                st.markdown(
+                    '<div class="mem-cal-empty">เดือนนี้ยังไม่มีการสอบเทียบจากตารางทวนสอบ</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+                return
+
+            # เลือกคอลัมน์ที่เอามาแสดงในตารางปฏิทิน
+            cols_show = []
+            for c in ["Equipment", "ID Code", "S/N", "Location", "หมายเหตุ", due_col]:
+                if c in month_df.columns:
+                    cols_show.append(c)
+
+            if due_col in cols_show:
+                month_df = month_df.sort_values(due_col)
+                month_df[due_col] = month_df[due_col].dt.strftime("%d/%m/%Y")
+
+            table = month_df[cols_show]
+            st.dataframe(
+                table,
+                hide_index=True,
+                use_container_width=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # แสดงการ์ดปฏิทินเฉพาะเมื่อมีคอลัมน์เดือน 1–12
+    if month_cols:
+        st.markdown(
+            """
+            <div class="mem-card">
+                <div class="mem-card-title">ปฏิทินแผนสอบเทียบ (เดือนปัจจุบันและเดือนหน้า)</div>
+                <div class="mem-card-subtitle">
+                    ใช้ข้อมูลจากตารางทวนสอบ (คอลัมน์เดือน 1–12) ของไฟล์แผนสอบเทียบ
+                    แสดงรายการที่มีค่า = 1 เฉพาะเดือนปัจจุบันและเดือนถัดไป
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        col_curr, col_next = st.columns(2)
+        render_month_plan(col_curr, current_month, current_year)
+        render_month_plan(col_next, next_month, next_year)
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info(
+            "ไฟล์แผนสอบเทียบนี้ยังไม่มีคอลัมน์เดือน (1–12) สำหรับใช้ทำปฏิทิน "
+            "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
+        )
+
+    # ===================================================================
+    # ส่วนเดิม: ใช้ Due M/D/Y คำนวณเลยกำหนด / ใกล้ครบกำหนด / PM / พร้อมใช้งาน
+    # ===================================================================
     def label_status(days):
         if pd.isna(days):
             return "ไม่มีข้อมูล"
@@ -2002,7 +2134,7 @@ def page_calibration():
     st.markdown(summary_html, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- ตารางแก้ไขได้ ---
+    # --- ตารางแก้ไขได้ทั้งหมด ---
     st.markdown("### แผนสอบเทียบทั้งหมด (แก้ไขได้)")
     editable_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
     edited_df = st.data_editor(
