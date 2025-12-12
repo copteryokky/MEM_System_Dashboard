@@ -4,6 +4,7 @@ import altair as alt
 from pathlib import Path
 from io import BytesIO
 import qrcode
+import calendar as pycal   # 👈 เพิ่มใช้สร้างปฏิทิน
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -478,6 +479,43 @@ def set_main_style():
             color:#6B7280;
             margin-bottom:12px;
         }
+
+        /* ปฏิทินในกล่องด้านบน */
+        .mem-cal-calendar{
+            margin-bottom:12px;
+        }
+        .mem-cal-grid{
+            width:100%;
+            border-collapse:collapse;
+            table-layout:fixed;
+        }
+        .mem-cal-grid th{
+            font-size:11px;
+            font-weight:600;
+            color:#6B7280;
+            padding:2px 0 6px 0;
+            text-align:center;
+        }
+        .mem-cal-grid td{
+            padding:3px 0;
+            text-align:center;
+        }
+        .mem-cal-day{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            width:26px;
+            height:26px;
+            border-radius:999px;
+            font-size:11px;
+            color:#4B5563;
+        }
+        .mem-cal-day-event{
+            background:linear-gradient(135deg,#4F46E5,#6366F1);
+            color:#FFFFFF;
+            box-shadow:0 0 0 1px rgba(129,140,248,0.6);
+        }
+
         .mem-cal-item{
             border-radius:18px;
             padding:10px 12px;
@@ -1916,10 +1954,13 @@ def page_calibration():
         12: "ธ.ค.",
     }
 
+    weekday_labels = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"]
+
     def render_month_plan(container, target_month: int, target_year: int):
         """
-        แสดง 'ปฏิทินแบบย่อ' ของเดือน target_month
-        โดยดูจากคอลัมน์เดือนในตารางทวนสอบที่มีค่า = 1 (หรือค่าที่ไม่ใช่ 0/None/ว่าง)
+        แสดงปฏิทิน + รายการเครื่องมือของเดือน target_month
+        - ปฏิทินด้านบน (ในกล่องขาว) เน้นวันที่มี Due Date
+        - รายการเครื่องมือ (รูปที่ 2) แสดงด้านล่างในกล่องเดียวกัน
         """
         month_label = THAI_MONTH_SHORT.get(target_month, str(target_month))
 
@@ -1935,8 +1976,8 @@ def page_calibration():
             st.markdown(
                 f'<div class="mem-cal-column-title">เดือน {month_label} {target_year}</div>'
                 '<div class="mem-cal-column-sub">'
-                'ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) แสดงเฉพาะแถวที่มีค่า = 1 ในเดือนนี้'
-                '</div>',
+                'ดึงจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของแผนสอบเทียบ '
+                'เพื่อแสดงปฏิทินและรายการเครื่องมือของเดือนนี้</div>',
                 unsafe_allow_html=True,
             )
 
@@ -1964,6 +2005,43 @@ def page_calibration():
 
             month_df = df[mask].copy()
 
+            # ===== ปฏิทินด้านบนในกล่อง =====
+            # วันที่ที่มี Due Date ในเดือนนี้
+            highlight_days: set[int] = set()
+            if not month_df.empty and due_col in month_df.columns:
+                due_series = pd.to_datetime(month_df[due_col], errors="coerce")
+                due_series = due_series[
+                    (due_series.dt.month == target_month)
+                    & (due_series.dt.year == target_year)
+                ]
+                highlight_days = set(
+                    due_series.dropna().dt.day.astype(int).tolist()
+                )
+
+            cal_obj = pycal.Calendar(firstweekday=0)  # Monday-first
+            weeks = cal_obj.monthdayscalendar(target_year, target_month)
+
+            cal_html = '<div class="mem-cal-calendar"><table class="mem-cal-grid"><thead><tr>'
+            for w in weekday_labels:
+                cal_html += f"<th>{w}</th>"
+            cal_html += "</tr></thead><tbody>"
+
+            for week in weeks:
+                cal_html += "<tr>"
+                for day in week:
+                    if day == 0:
+                        cal_html += "<td></td>"
+                    else:
+                        cls = "mem-cal-day"
+                        if day in highlight_days:
+                            cls += " mem-cal-day-event"
+                        cal_html += f'<td><div class="{cls}">{day}</div></td>'
+                cal_html += "</tr>"
+            cal_html += "</tbody></table></div>"
+
+            st.markdown(cal_html, unsafe_allow_html=True)
+
+            # ===== รายการเครื่องมือ (รูปที่ 2) =====
             if month_df.empty:
                 st.markdown(
                     '<div class="mem-cal-empty">เดือนนี้ยังไม่มีการสอบเทียบจากตารางทวนสอบ</div>',
@@ -2001,8 +2079,8 @@ def page_calibration():
             <div class="mem-card">
                 <div class="mem-card-title">ปฏิทินแผนสอบเทียบ (เดือนปัจจุบันและเดือนหน้า)</div>
                 <div class="mem-card-subtitle">
-                    ใช้ข้อมูลจากตารางทวนสอบ (คอลัมน์เดือน 1–12) ของไฟล์แผนสอบเทียบ
-                    แสดงรายการที่มีค่า = 1 เฉพาะเดือนปัจจุบันและเดือนถัดไป
+                    ใช้ข้อมูลจากตารางทวนสอบ (คอลัมน์เดือน 1–12) และ Due Date ของไฟล์แผนสอบเทียบ
+                    แสดงปฏิทินในกล่องด้านบน และรายการเครื่องมือในเดือนนั้นในกล่องเดียวกัน
                 </div>
             """,
             unsafe_allow_html=True,
