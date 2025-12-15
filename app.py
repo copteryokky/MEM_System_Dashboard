@@ -1584,8 +1584,7 @@ def page_equipment_list():
     st.markdown("### สถานะแจ้งซ่อม")
     current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
     if current_maint not in MAINT_STATUS_CHOICES:
-        # FIX: ใช้ MAINT_STATUS_CHOICES ให้ถูกต้อง ไม่ใช่ MAINT_STATUS_CHOCHOICES
-        current_maint = MAINT_STATUS_CHOICES[0]
+        current_maint = MAINT_STATUS_CHOCHOICES[0]
     maint_select = st.selectbox(
         "สถานะแจ้งซ่อม",
         MAINT_STATUS_CHOICES,
