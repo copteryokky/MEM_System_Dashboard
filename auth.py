@@ -55,30 +55,47 @@ def save_users(df: pd.DataFrame):
     df.to_excel(USERS_FILE, index=False)
 
 
-def authenticate_user(username: str, password: str) -> Tuple[bool, str, str]:
+def safe_authenticate_admin(username: str, password: str):
     """
-    ตรวจสอบ username / password
-    คืนค่า: (สำเร็จหรือไม่, ชื่อที่แสดง, role)
+    เรียกใช้ authenticate_user จาก auth.py แบบยืดหยุ่น
+    รองรับหลายรูปแบบ เช่น
+      - True / False
+      - (ok,)
+      - (ok, display_name)
+      - (ok, display_name, role, ...)
     """
-    username = (username or "").strip()
-    password = (password or "").strip()
+    try:
+        res = authenticate_user(username, password)
+    except Exception:
+        # ถ้า auth.py มีปัญหาจริง ๆ (เช่น อ่านไฟล์/ต่อเน็ตไม่ได้) ค่อยเตือน
+        if not st.session_state.get("_admin_auth_error_shown", False):
+            st.session_state["_admin_auth_error_shown"] = True
+            st.warning(
+                "ไม่สามารถตรวจสอบสิทธิ์ผ่านระบบผู้ดูแล (auth.py) ได้ "
+                "กรุณาตรวจสอบไฟล์ auth.py หรือใช้บัญชีผู้ใช้ที่สมัครในระบบแทน"
+            )
+        return False, ""
 
-    if not username or not password:
-        return False, "", ""
+    ok = False
+    display_name = username
 
-    df = load_users()
-    mask = (
-        df["username"].astype(str).str.lower() == username.lower()
-    ) & (df["password"].astype(str) == password)
+    # ถ้า auth.py คืนเป็น tuple / list
+    if isinstance(res, (tuple, list)):
+        if len(res) == 0:
+            ok = False
+        elif len(res) == 1:
+            ok = bool(res[0])
+        else:
+            # ใช้ตัวแรกเป็นสถานะ, ตัวที่สองเป็นชื่อที่แสดง
+            ok = bool(res[0])
+            if res[1]:
+                display_name = str(res[1])
+    else:
+        # คืนเป็น bool ตัวเดียว
+        ok = bool(res)
 
-    if not mask.any():
-        return False, "", ""
+    return bool(ok), display_name
 
-    row = df.loc[mask].iloc[0]
-    full_name = str(row.get("full_name", "") or username)
-    role = str(row.get("role", "") or "user")
-
-    return True, full_name, role
 
 
 def register_user(username: str, password: str, full_name: str) -> Tuple[bool, str]:
