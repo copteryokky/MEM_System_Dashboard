@@ -9,6 +9,7 @@ import qrcode
 import calendar
 from datetime import datetime, date
 import hashlib
+import secrets  # ✅ ใช้สร้าง token สำหรับ session แบบถาวร
 
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
 from auth import authenticate_user
@@ -67,6 +68,113 @@ CAL_PLAN_SIMPLE_PATH = DATA_DIR / CAL_PLAN_SIMPLE_NAME
 CAL_ORIGINAL_NAME = "แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx"
 
 # =========================
+# ระบบ session ถาวร (กันหลุดเวลา F5)
+# =========================
+
+@st.cache_resource
+def get_session_store():
+    """
+    เก็บ session token -> ข้อมูลผู้ใช้ (username, display_name, role)
+    อยู่ฝั่งเซิร์ฟเวอร์ (ไม่หายเมื่อกด F5) ถ้าไม่ restart server
+    """
+    return {}
+
+
+def _get_all_query_params_dict():
+    """ดึง query params ปัจจุบันเป็น dict ธรรมดา"""
+    try:
+        params = st.query_params
+        # streamlit เวอร์ชันใหม่ query_params เป็น MappingProxy
+        return dict(params)
+    except Exception:
+        try:
+            params = st.experimental_get_query_params()
+            # ของเก่าเป็น dict ของ list
+            simple = {}
+            for k, v in params.items():
+                if isinstance(v, list) and v:
+                    simple[k] = v[0]
+                else:
+                    simple[k] = v
+            return simple
+        except Exception:
+            return {}
+
+
+def create_persistent_session(username: str, display_name: str, role: str):
+    """
+    สร้าง token เก็บใน session store + ยัด token ลง URL
+    เวลา F5 จะใช้ token นี้ดึงข้อมูลกลับมา ทำให้ไม่เด้งไปหน้า login
+    """
+    token = secrets.token_urlsafe(16)
+
+    store = get_session_store()
+    store[token] = {
+        "username": username,
+        "display_name": display_name,
+        "role": role,
+    }
+
+    st.session_state.session_token = token
+    st.session_state.logged_in = True
+    st.session_state.username = username
+    st.session_state.display_name = display_name
+    st.session_state.role = role
+    st.session_state.view = "app"
+
+    # เก็บ query param เดิมไว้ (เช่น view=qr, code=...) แล้วเติม token เข้าไปเฉย ๆ
+    params = _get_all_query_params_dict()
+    params["token"] = token
+    st.experimental_set_query_params(**params)
+
+
+def load_persistent_session_from_token() -> bool:
+    """
+    ถ้า URL มี ?token=... และ token ยังอยู่ใน store
+    ให้ดึงข้อมูลผู้ใช้กลับเข้า session_state → ถือว่า login แล้ว
+    """
+    from urllib.parse import unquote
+
+    # ดึง token จาก query
+    token_raw = get_query_param("token")
+    if not token_raw:
+        return False
+
+    token = str(token_raw)
+    store = get_session_store()
+    data = store.get(token)
+    if not data:
+        return False
+
+    st.session_state.session_token = token
+    st.session_state.logged_in = True
+    st.session_state.username = data.get("username", "")
+    st.session_state.display_name = data.get("display_name", st.session_state.username)
+    st.session_state.role = data.get("role", "user")
+    # ให้เข้าโหมด app ทันที (ไม่ผ่านหน้า landing / login)
+    if "view" not in st.session_state:
+        st.session_state.view = "app"
+    return True
+
+
+def logout_and_clear_session():
+    """ใช้ตอนกด Logout: ลบ token จาก store + เคลียร์ query params + ล้าง session_state"""
+    token = st.session_state.get("session_token") or get_query_param("token")
+    store = get_session_store()
+    if token:
+        store.pop(token, None)
+
+    # ล้าง query params ทั้งหมด (เอา token ออก)
+    st.experimental_set_query_params()
+
+    # ล้าง session_state
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
+
+    st.session_state.logged_in = False
+    st.session_state.view = "landing"
+
+# =========================
 # ระบบบัญชีผู้ใช้ (สมัครสมาชิก / login แบบ role=user)
 # =========================
 
@@ -80,7 +188,6 @@ def load_local_users():
     else:
         df = pd.DataFrame(columns=["username", "password", "full_name"])
 
-    # ให้แน่ใจว่ามีคอลัมน์ครบ
     for col in ["username", "password", "full_name"]:
         if col not in df.columns:
             df[col] = []
@@ -97,7 +204,6 @@ def hash_password(password: str) -> str:
 
 
 def register_local_user(username: str, full_name: str, password: str, password2: str) -> str:
-    """คืนค่า 'success' ถ้าสมัครได้, ถ้าไม่ใช่ success จะเป็นข้อความ error (ภาษาไทย)"""
     username = (username or "").strip()
     full_name = (full_name or "").strip()
 
@@ -750,7 +856,6 @@ def load_equipment_data() -> pd.DataFrame:
         if "รูปภาพครุภัณฑ์" not in df.columns:
             df["รูปภาพครุภัณฑ์"] = ""
 
-        # ---- คอลัมน์ที่ใช้กับระบบแจ้งซ่อม ----
         if MAINT_REQUEST_DATE_COL not in df.columns:
             df[MAINT_REQUEST_DATE_COL] = ""
         if MAINT_EST_DAYS_COL not in df.columns:
@@ -762,7 +867,6 @@ def load_equipment_data() -> pd.DataFrame:
         if MAINT_NOTE_COL not in df.columns:
             df[MAINT_NOTE_COL] = ""
 
-        # ---- คอลัมน์หมายเหตุจากผู้ใช้งาน ----
         if USER_NOTE_COL not in df.columns:
             df[USER_NOTE_COL] = ""
 
@@ -789,7 +893,6 @@ def save_equipment_data(df: pd.DataFrame):
 # Helpers สำหรับ "แจ้งซ่อม / บำรุงรักษา"
 # =========================
 def build_maintenance_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """สรุปจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม"""
     if MAINT_STATUS_COL not in df.columns:
         return pd.DataFrame()
 
@@ -804,11 +907,6 @@ def build_maintenance_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_maintenance_timers(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    ตารางแจ้งเตือนเวลาคงเหลือในการซ่อม
-    ใช้ 'วันที่แจ้งซ่อมล่าสุด' + 'ระยะเวลาซ่อมที่กำหนด (วัน)'
-    ถ้าไม่ได้กำหนดวัน → ใช้ค่า default 7 วัน
-    """
     if MAINT_STATUS_COL not in df.columns:
         return pd.DataFrame()
     if MAINT_REQUEST_DATE_COL not in df.columns:
@@ -823,7 +921,6 @@ def calculate_maintenance_timers(df: pd.DataFrame) -> pd.DataFrame:
     else:
         est_days = pd.Series(pd.NA, index=df.index)
 
-    # เลือกเฉพาะรายการที่แจ้งซ่อมแล้วและมีวันที่
     mask_open = (
         df[MAINT_STATUS_COL].isin(["แจ้งซ่อมแล้ว - กำลังดำเนินการ"])
         & req_dates.notna()
@@ -878,11 +975,6 @@ def calculate_maintenance_timers(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
-    """
-    เคลียร์สถานะแจ้งซ่อมของรายการที่เกิน 'ระยะเวลาซ่อมที่กำหนด (วัน)'
-    ถ้าไม่ได้กำหนดวัน → ใช้ default_limit (7 วัน)
-    เฉพาะรายการที่ยังเป็น 'แจ้งซ่อมแล้ว - กำลังดำเนินการ'
-    """
     if MAINT_STATUS_COL not in df.columns:
         return df, 0
     if MAINT_REQUEST_DATE_COL not in df.columns:
@@ -893,7 +985,6 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
     today = pd.to_datetime(pd.Timestamp.today().normalize())
     days_diff = (today - req_dates).dt.days
 
-    # ใช้ระยะเวลาซ่อมรายรายการ ถ้าไม่มีให้ใช้ default_limit
     if MAINT_EST_DAYS_COL in df_new.columns:
         limits = pd.to_numeric(df_new[MAINT_EST_DAYS_COL], errors="coerce")
         limits = limits.fillna(default_limit).astype("int64")
@@ -910,7 +1001,6 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
     if expired_count == 0:
         return df_new, 0
 
-    # รีเซ็ตสถานะ + ล้างข้อมูลแจ้งซ่อม → ต้องแจ้งใหม่
     df_new.loc[mask_expire, MAINT_STATUS_COL] = MAINT_STATUS_CHOICES[0]
     df_new.loc[mask_expire, MAINT_REQUEST_DATE_COL] = ""
     if MAINT_EST_DAYS_COL in df_new.columns:
@@ -926,11 +1016,6 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
 
 
 def export_maintenance_excel(df: pd.DataFrame) -> BytesIO:
-    """
-    สร้างไฟล์ Excel สำหรับข้อมูลแจ้งซ่อม
-    - Sheet1: สรุปสถานะแจ้งซ่อม
-    - Sheet2: รายการแจ้งซ่อม + เวลาคงเหลือ
-    """
     summary_df = build_maintenance_summary(df)
     timers_df = calculate_maintenance_timers(df)
 
@@ -951,10 +1036,6 @@ def export_maintenance_excel(df: pd.DataFrame) -> BytesIO:
 
 
 def ensure_request_dates(df: pd.DataFrame):
-    """
-    เติมวันที่แจ้งซ่อมให้รายการที่สถานะแจ้งซ่อม = 'แจ้งซ่อมแล้ว - กำลังดำเนินการ'
-    แต่ช่องวันที่ยังว่างอยู่ → ใช้วันที่วันนี้เป็นวันที่แจ้งซ่อม
-    """
     if MAINT_REQUEST_DATE_COL not in df.columns:
         df[MAINT_REQUEST_DATE_COL] = ""
 
@@ -974,7 +1055,6 @@ def ensure_request_dates(df: pd.DataFrame):
 # Helpers สำหรับ "แผนสอบเทียบ"
 # =========================
 def parse_calibration_from_file(path: Path) -> pd.DataFrame:
-    """อ่านไฟล์แผนสอบเทียบแบบเดิม (มีหัวตารางหลายแถว) แล้วจัดให้อยู่ในรูปตาราง DataFrame เดียว"""
     try:
         xls = pd.ExcelFile(path)
     except Exception:
@@ -989,7 +1069,6 @@ def parse_calibration_from_file(path: Path) -> pd.DataFrame:
         if raw.empty or len(raw) < 4:
             continue
 
-        # ใช้แถวที่ 3 (index=2) เป็น header
         header_row = raw.iloc[2]
         df = raw.iloc[3:].copy()
         df.columns = header_row
@@ -1010,11 +1089,6 @@ def parse_calibration_from_file(path: Path) -> pd.DataFrame:
 
 
 def load_calibration_plan() -> pd.DataFrame:
-    """
-    โหลดข้อมูลแผนสอบเทียบ
-    1) ถ้ามีไฟล์ calibration_plan_simple.xlsx → ใช้ไฟล์นี้
-    2) ถ้ามีไฟล์ แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx → แปลงรูปแบบแล้วใช้
-    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     if CAL_PLAN_SIMPLE_PATH.exists():
@@ -1035,10 +1109,8 @@ def load_calibration_plan() -> pd.DataFrame:
 
 
 def save_calibration_plan(df: pd.DataFrame):
-    """บันทึกแผนสอบเทียบลงไฟล์ calibration_plan_simple.xlsx"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     base_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
-
     df_to_save = df[base_cols].copy()
     try:
         df_to_save.to_excel(CAL_PLAN_SIMPLE_PATH, index=False)
@@ -1048,7 +1120,6 @@ def save_calibration_plan(df: pd.DataFrame):
 
 
 def import_calibration_from_uploaded(uploaded_file) -> pd.DataFrame:
-    """รับไฟล์ที่อัปโหลด → พยายามแปลงแบบเดิมก่อน ถ้าไม่ได้ให้ลองอ่านตรง ๆ"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     temp_path = DATA_DIR / "_uploaded_cal_plan_temp.xlsx"
 
@@ -1121,7 +1192,6 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
 # =========================
 
 def find_name_column(df: pd.DataFrame):
-    """เดา column ที่เป็นชื่อครุภัณฑ์จากคำว่า 'ชื่อ' ในหัวตาราง"""
     for c in df.columns:
         if "ชื่อ" in str(c):
             return c
@@ -1129,7 +1199,6 @@ def find_name_column(df: pd.DataFrame):
 
 
 def get_query_param(name: str, default=None):
-    """อ่าน query string แบบรองรับทั้ง st.query_params และ experimental_get_query_params"""
     try:
         params = st.query_params
         if name in params:
@@ -1148,12 +1217,6 @@ def get_query_param(name: str, default=None):
 # =========================
 
 def render_asset_detail_form(df: pd.DataFrame, row_idx, role: str, from_qr: bool = False):
-    """
-    ฟอร์มรายละเอียดครุภัณฑ์ 1 รายการ
-    - ทุกคนแก้ได้: USER_NOTE_COL (หมายเหตุจากผู้ใช้งาน)
-    - user: แจ้งซ่อมได้ (เปลี่ยนเป็น 'แจ้งซ่อมแล้ว - กำลังดำเนินการ' + วันที่แจ้งวันนี้)
-    - admin: แก้ทุก field ของการแจ้งซ่อมได้
-    """
     row = df.loc[row_idx]
     code = str(row.get(ASSET_CODE_COL, "ไม่ระบุ"))
     name_col = find_name_column(df)
@@ -1209,7 +1272,6 @@ def render_asset_detail_form(df: pd.DataFrame, row_idx, role: str, from_qr: bool
             st.text_input("ชื่อครุภัณฑ์ / เครื่องมือ", value=name_val, disabled=True)
 
         st.write("---")
-        # หมายเหตุจากผู้ใช้งาน (ทุก role เขียนได้)
         user_note_new = st.text_area(
             "หมายเหตุจากผู้ใช้งาน (บันทึกการใช้งาน / ปัญหาที่พบ ฯลฯ)",
             value=user_note,
@@ -1263,7 +1325,6 @@ def render_asset_detail_form(df: pd.DataFrame, row_idx, role: str, from_qr: bool
                 height=80,
             )
 
-            # กำหนดค่า default กลับไปใช้ของเดิม
             maint_status_new = maint_status
             req_date_new = req_date
             est_days_new = est_days
@@ -1277,7 +1338,6 @@ def render_asset_detail_form(df: pd.DataFrame, row_idx, role: str, from_qr: bool
         submitted = st.form_submit_button("💾 บันทึกข้อมูล")
 
         if submitted:
-            # อัปเดตค่าใน DataFrame
             df.at[row_idx, USER_NOTE_COL] = user_note_new
 
             df.at[row_idx, MAINT_STATUS_COL] = maint_status_new
@@ -1318,7 +1378,6 @@ def landing_page():
         unsafe_allow_html=True,
     )
 
-    # ปุ่ม
     st.markdown('<div class="landing-buttons">', unsafe_allow_html=True)
     col1, col2 = st.columns(2, gap="small")
 
@@ -1336,7 +1395,6 @@ def landing_page():
         unsafe_allow_html=True,
     )
 
-    # การ์ด 3 ใบ
     st.markdown(
         """
         <div class="feature-row">
@@ -1414,26 +1472,18 @@ def login_page():
             st.rerun()
 
         if login_clicked:
-            # 1) ลอง auth.py ก่อน → ถือเป็น admin
+            # 1) ลอง auth.py ก่อน → admin
             ok_admin, display_name_admin = authenticate_user(username, password)
             if ok_admin:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.session_state.display_name = display_name_admin
-                st.session_state.role = "admin"
-                st.session_state.view = "app"
                 st.session_state.current_menu = "หน้าหลัก"
+                create_persistent_session(username, display_name_admin, "admin")
                 st.rerun()
             else:
-                # 2) ถ้าไม่ผ่าน ลองไฟล์ local (role=user)
+                # 2) ลอง local users → user
                 ok_user, full_name = login_local_user(username, password)
                 if ok_user:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.session_state.display_name = full_name
-                    st.session_state.role = "user"
-                    st.session_state.view = "app"
                     st.session_state.current_menu = "รายการครุภัณฑ์"
+                    create_persistent_session(username, full_name, "user")
                     st.rerun()
                 else:
                     st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
@@ -1915,7 +1965,6 @@ def page_equipment_list_admin():
             with open(qr_path, "rb") as f:
                 qr_bytes_for_download = f.read()
         else:
-            # QR ให้ชี้กลับมาที่ app นี้ พร้อมพารามิเตอร์ view=qr&code=...
             url_for_qr = f"{APP_BASE_URL}?view=qr&code={asset_code}"
             qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
             st.image(qr_bytes_for_download, use_column_width=True)
@@ -1983,7 +2032,6 @@ def page_equipment_list_admin():
 # หน้า "รายการครุภัณฑ์" – User
 # =========================
 def page_equipment_list_user():
-    """ผู้ใช้งานทั่วไป: ดูรายการ + บันทึกหมายเหตุ / แจ้งซ่อมได้ แต่แก้ข้อมูลอื่นไม่ได้"""
     set_main_style()
     st.markdown(
         """
@@ -2061,7 +2109,6 @@ def page_maintenance():
         st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
         return
 
-    # ให้แน่ใจว่ามีคอลัมน์ที่ใช้กับแจ้งซ่อมครบ
     for col in [
         MAINT_REQUEST_DATE_COL,
         MAINT_EST_DAYS_COL,
@@ -2077,7 +2124,6 @@ def page_maintenance():
             else:
                 df[col] = ""
 
-    # เติมวันที่แจ้งซ่อมให้รายการที่สถานะ = "แจ้งซ่อมแล้ว - กำลังดำเนินการ" แต่ยังไม่มีวันที่
     df_filled, added_dates = ensure_request_dates(df)
     if added_dates > 0:
         save_equipment_data(df_filled)
@@ -2086,7 +2132,6 @@ def page_maintenance():
             f"ระบบได้เติมวันที่แจ้งซ่อม (วันนี้) ให้ {added_dates} รายการที่ยังไม่มีวันที่แจ้งซ่อมแล้ว"
         )
 
-    # เคลียร์รายการที่เกินกำหนด (ตามระยะเวลาซ่อมที่กำหนด, ถ้าไม่มีใช้ 7)
     df_after_expire, expired_count = expire_old_maintenance(df)
     if expired_count > 0:
         save_equipment_data(df_after_expire)
@@ -2100,7 +2145,6 @@ def page_maintenance():
         st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
         return
 
-    # ---------- การ์ดที่ 1: ภาพรวมสถานะแจ้งซ่อม ----------
     maint_counts = build_maintenance_summary(df)
 
     st.markdown(
@@ -2139,7 +2183,6 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ---------- การ์ดที่ 2: รายการแจ้งซ่อม + เวลาคงเหลือ ----------
     st.markdown(
         """
         <div class="mem-card">
@@ -2257,7 +2300,6 @@ def page_maintenance():
                 df_current.at[selected_idx, MAINT_EVAL_COL] = eval_select
                 df_current.at[selected_idx, MAINT_NOTE_COL] = note
 
-                # ถ้าประเมินว่า "ซ่อมไม่ได้" → เปลี่ยนสถานะเป็นปลดระวาง / รอจำหน่าย
                 if eval_select.startswith("ซ่อมไม่ได้"):
                     df_current.at[selected_idx, MAINT_STATUS_COL] = "ปลดระวาง / รอจำหน่าย"
 
@@ -2279,7 +2321,6 @@ def _find_col_by_keywords(columns, keywords):
 
 
 def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
-    """สร้าง HTML ปฏิทิน 1 เดือน พร้อม bubble จำนวนเครื่องมือในแต่ละวัน"""
     if due_series is None:
         due_series = pd.Series([], dtype="datetime64[ns]")
 
@@ -2288,18 +2329,16 @@ def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
     due_this = due_this[(due_this.dt.year == year) & (due_this.dt.month == month)]
     day_counts = due_this.dt.day.value_counts().to_dict()
 
-    cal = calendar.Calendar(firstweekday=0)  # จันทร์เป็นวันแรก
+    cal = calendar.Calendar(firstweekday=0)
     days_th = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"]
 
     html = ['<div class="cal-calendar-wrapper">']
-    # header
     html.append('<div class="cal-grid">')
     html.append('<div class="cal-grid-row cal-grid-header">')
     for d in days_th:
         html.append(f'<div class="cal-cell"><span class="cal-day-num">{d}</span></div>')
     html.append("</div>")
 
-    # weeks
     for week in cal.monthdayscalendar(year, month):
         html.append('<div class="cal-grid-row">')
         for day in week:
@@ -2334,7 +2373,6 @@ def _get_month_mask(df: pd.DataFrame, month_cols: list[tuple[int, str]], target_
 
     series_m = df[col_name]
 
-    # ค่าที่ไม่ใช่ 0 / ไม่ว่าง / ไม่ None → ถือว่ามีแผนสอบเทียบ
     if pd.api.types.is_numeric_dtype(series_m):
         mask = series_m.fillna(0) > 0
     else:
@@ -2348,7 +2386,7 @@ def _get_month_mask(df: pd.DataFrame, month_cols: list[tuple[int, str]], target_
     return mask
 
 # =========================
-# หน้า "แผนสอบเทียบ" – ปฏิทิน + การ์ด + เลือกเดือน
+# หน้า "แผนสอบเทียบ"
 # =========================
 def page_calibration():
     set_main_style()
@@ -2365,7 +2403,6 @@ def page_calibration():
         unsafe_allow_html=True,
     )
 
-    # ----------------- อัปโหลดไฟล์แผนสอบเทียบ -----------------
     with st.expander("📁 อัปโหลด / แทนที่ไฟล์แผนสอบเทียบ (.xlsx)", expanded=False):
         uploaded = st.file_uploader(
             "เลือกไฟล์ Excel ของแผนสอบเทียบ",
@@ -2392,7 +2429,6 @@ def page_calibration():
         else:
             st.caption("ยังไม่มีไฟล์แผนสอบเทียบในโฟลเดอร์ data")
 
-    # ----------------- โหลดข้อมูลแผนสอบเทียบ -----------------
     df = load_calibration_plan()
     if df.empty:
         st.info(
@@ -2401,7 +2437,6 @@ def page_calibration():
         )
         return
 
-    # ---- หาคอลัมน์กำหนดสอบเทียบ (Due M/D/Y) ----
     due_col = "Due M/D/Y"
     if due_col not in df.columns:
         for c in df.columns:
@@ -2419,7 +2454,6 @@ def page_calibration():
     today = pd.to_datetime(pd.Timestamp.today().normalize())
     df["days_left"] = (df[due_col] - today).dt.days
 
-    # ========= ตรวจคอลัมน์เดือน 1–12 =========
     month_cols: list[tuple[int, str]] = []
     for c in df.columns:
         s = str(c).strip()
@@ -2448,7 +2482,6 @@ def page_calibration():
     current_month = int(today.month)
     next_month = 1 if current_month == 12 else current_month + 1
 
-    # ========= ปฏิทิน 2 เดือน (เลือกเดือนได้) =========
     if month_cols:
         st.markdown(
             """
@@ -2516,7 +2549,6 @@ def page_calibration():
             "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
         )
 
-    # ========= รายการเครื่องมือในแผนสอบเทียบ (การ์ด + เลือกเดือน) =========
     st.markdown(
         """
         <div class="mem-card">
@@ -2549,7 +2581,6 @@ def page_calibration():
         df.columns, ["note"]
     )
 
-    # ตัวเลือกเดือนสำหรับการ์ด
     if month_cols:
         month_for_cards = st.selectbox(
             "เลือกเดือนสำหรับแสดงรายการ",
@@ -2566,7 +2597,6 @@ def page_calibration():
     if df_cards.empty:
         st.info("เดือนนี้ยังไม่มีเครื่องมือในแผนสอบเทียบ")
     else:
-        # แสดงการ์ดแบบ 2 คอลัมน์
         cols_cards = st.columns(2)
         for i, (_, r) in enumerate(df_cards.iterrows()):
             name = str(r.get(equip_col, "-")) if equip_col else "-"
@@ -2593,9 +2623,6 @@ def page_calibration():
             with cols_cards[i % 2]:
                 st.markdown(card_html, unsafe_allow_html=True)
 
-    # ===================================================================
-    # สถานะตาม Due M/D/Y (ใช้ทำสรุปตัวเลขด้านล่าง)
-    # ===================================================================
     def label_status(days):
         if pd.isna(days):
             return "ไม่มีข้อมูล"
@@ -2610,7 +2637,6 @@ def page_calibration():
 
     df["สถานะกำหนด"] = df["days_left"].apply(label_status)
 
-    # --- การ์ดสรุปสถิติ ---
     st.markdown(
         """
         <div class="mem-card">
@@ -2650,7 +2676,6 @@ def page_calibration():
     st.markdown(summary_html, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- ตารางแก้ไขได้ทั้งหมด ---
     st.markdown("### แผนสอบเทียบทั้งหมด (แก้ไขได้)")
     editable_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
     edited_df = st.data_editor(
@@ -2680,7 +2705,6 @@ def page_summary():
 # หน้า "สแกน QR / บันทึกหมายเหตุ"
 # =========================
 def page_qr(role: str):
-    """หน้าใช้ร่วมกับ QR Code – พิมพ์รหัส หรือเข้าผ่าน URL ?view=qr&code=..."""
     set_main_style()
     st.markdown(
         """
@@ -2781,10 +2805,7 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            for k in list(st.session_state.keys()):
-                del st.session_state[k]
-            st.session_state.logged_in = False
-            st.session_state.view = "landing"
+            logout_and_clear_session()
             st.rerun()
 
     default_menu = "หน้าหลัก" if role == "admin" else "รายการครุภัณฑ์"
@@ -2817,18 +2838,23 @@ if "selected_row_idx" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state.role = "admin"
 
+# ✅ ถ้ายังไม่ได้ล็อกอิน (ใน session_state) → ลองโหลดจาก token ใน URL
+if not st.session_state.logged_in:
+    load_persistent_session_from_token()
+
 # อ่านพารามิเตอร์ view จาก URL (เช่น ?view=qr&code=LAB-CH-01)
 view_param = get_query_param("view", None)
 if view_param:
     if view_param == "qr":
-        # ถ้ายังไม่ login ให้ไปหน้า login ก่อน
         if not st.session_state.logged_in:
             st.session_state.view = "login"
         else:
+            st.session_state.view = "app"
             st.session_state.current_menu = "สแกน QR / บันทึกหมายเหตุ"
     elif view_param == "login":
         st.session_state.view = "login"
 
+# ตัดสินใจว่าแสดงอะไร
 if st.session_state.logged_in:
     main_app()
 else:
