@@ -1,129 +1,103 @@
 # auth.py
-"""
-ระบบจัดการผู้ใช้สำหรับ MEM System
-- เก็บบัญชีผู้ใช้ในไฟล์ users.xlsx (โฟลเดอร์เดียวกับไฟล์ครุภัณฑ์)
-- มี default admin: username=admin, password=admin1234
-"""
-
-from pathlib import Path
-from typing import Tuple
-
 import pandas as pd
-
-from config import DATA_DIR
+from pathlib import Path
+from config import DATA_DIR  # ใช้ DATA_DIR ร่วมกับ app.py
 
 USERS_FILE = DATA_DIR / "users.xlsx"
 
-
-def _ensure_users_file():
-    """สร้างไฟล์ users.xlsx พร้อม admin เริ่มต้น ถ้ายังไม่มี"""
-    if USERS_FILE.exists():
-        return
-
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    df = pd.DataFrame(
-        [
-            {
-                "username": "admin",
-                "password": "admin1234",
-                "full_name": "System Admin",
-                "role": "admin",
-            }
-        ]
-    )
-    df.to_excel(USERS_FILE, index=False)
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "1234"
+DEFAULT_ADMIN_DISPLAY = "System Admin"
 
 
-def load_users() -> pd.DataFrame:
-    """อ่านตารางบัญชีผู้ใช้จาก users.xlsx"""
-    _ensure_users_file()
+def _ensure_data_dir():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_users_df() -> pd.DataFrame:
+    _ensure_data_dir()
+    if not USERS_FILE.exists():
+        return pd.DataFrame(columns=["username", "password", "display_name", "role"])
+
     try:
         df = pd.read_excel(USERS_FILE)
     except Exception:
-        df = pd.DataFrame(columns=["username", "password", "full_name", "role"])
+        return pd.DataFrame(columns=["username", "password", "display_name", "role"])
 
-    for col in ["username", "password", "full_name", "role"]:
+    for col in ["username", "password", "display_name", "role"]:
         if col not in df.columns:
             df[col] = ""
-
     return df
 
 
-def save_users(df: pd.DataFrame):
-    """บันทึกตารางบัญชีผู้ใช้กลับไปที่ users.xlsx"""
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+def _save_users_df(df: pd.DataFrame):
+    _ensure_data_dir()
     df.to_excel(USERS_FILE, index=False)
 
 
-def safe_authenticate_admin(username: str, password: str):
+def authenticate_user(username: str, password: str):
     """
-    เรียกใช้ authenticate_user จาก auth.py แบบยืดหยุ่น
-    รองรับหลายรูปแบบ เช่น
-      - True / False
-      - (ok,)
-      - (ok, display_name)
-      - (ok, display_name, role, ...)
-    """
-    try:
-        res = authenticate_user(username, password)
-    except Exception:
-        # ถ้า auth.py มีปัญหาจริง ๆ (เช่น อ่านไฟล์/ต่อเน็ตไม่ได้) ค่อยเตือน
-        if not st.session_state.get("_admin_auth_error_shown", False):
-            st.session_state["_admin_auth_error_shown"] = True
-            st.warning(
-                "ไม่สามารถตรวจสอบสิทธิ์ผ่านระบบผู้ดูแล (auth.py) ได้ "
-                "กรุณาตรวจสอบไฟล์ auth.py หรือใช้บัญชีผู้ใช้ที่สมัครในระบบแทน"
-            )
-        return False, ""
-
-    ok = False
-    display_name = username
-
-    # ถ้า auth.py คืนเป็น tuple / list
-    if isinstance(res, (tuple, list)):
-        if len(res) == 0:
-            ok = False
-        elif len(res) == 1:
-            ok = bool(res[0])
-        else:
-            # ใช้ตัวแรกเป็นสถานะ, ตัวที่สองเป็นชื่อที่แสดง
-            ok = bool(res[0])
-            if res[1]:
-                display_name = str(res[1])
-    else:
-        # คืนเป็น bool ตัวเดียว
-        ok = bool(res)
-
-    return bool(ok), display_name
-
-
-
-def register_user(username: str, password: str, full_name: str) -> Tuple[bool, str]:
-    """
-    สมัครสมาชิกใหม่ (role จะเป็น 'user' เสมอ)
-    คืนค่า: (สำเร็จหรือไม่, ข้อความแจ้ง)
+    คืนค่า: (ok: bool, display_name: str | None, role: str | None)
     """
     username = (username or "").strip()
     password = (password or "").strip()
-    full_name = (full_name or "").strip()
+
+    if not username or not password:
+        return False, None, None
+
+    df = _load_users_df()
+
+    if not df.empty:
+        mask = df["username"].astype(str).str.lower() == username.lower()
+        if mask.any():
+            user = df.loc[mask].iloc[0]
+            if str(user["password"]) == password:
+                display_name = str(user.get("display_name") or username)
+                role = str(user.get("role") or "user")
+                return True, display_name, role
+            else:
+                return False, None, None
+
+    # fallback admin เริ่มต้น (กรณีไม่มีใน users.xlsx)
+    if username == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
+        return True, DEFAULT_ADMIN_DISPLAY, "admin"
+
+    return False, None, None
+
+
+def register_user(username: str, password: str, display_name: str = ""):
+    """
+    สมัครสมาชิกใหม่ → บันทึกลง users.xlsx เป็น role = 'user'
+    คืนค่า: (ok: bool, message: str)
+    """
+    username = (username or "").strip()
+    password = (password or "").strip()
+    display_name = (display_name or "").strip()
 
     if not username or not password:
         return False, "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"
 
-    df = load_users()
+    df = _load_users_df()
 
-    # ห้ามซ้ำ username
-    if (df["username"].astype(str).str.lower() == username.lower()).any():
-        return False, "ชื่อผู้ใช้นี้ถูกใช้แล้ว กรุณาใช้ชื่ออื่น"
+    if not df.empty:
+        if (df["username"].astype(str).str.lower() == username.lower()).any():
+            return False, "มีชื่อผู้ใช้นี้อยู่ในระบบแล้ว"
 
-    new_row = {
-        "username": username,
-        "password": password,
-        "full_name": full_name or username,
-        "role": "user",  # ผู้ใช้ใหม่เป็น user เสมอ
-    }
+    if not display_name:
+        display_name = username
 
-    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    save_users(df)
+    new_row = pd.DataFrame(
+        [
+            {
+                "username": username,
+                "password": password,
+                "display_name": display_name,
+                "role": "user",
+            }
+        ]
+    )
 
-    return True, "สมัครสมาชิกสำเร็จ สามารถเข้าสู่ระบบได้ทันที"
+    df = pd.concat([df, new_row], ignore_index=True)
+    _save_users_df(df)
+
+    return True, "สมัครสมาชิกสำเร็จแล้ว สามารถเข้าสู่ระบบได้ทันที"
