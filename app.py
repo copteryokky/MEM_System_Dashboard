@@ -1,21 +1,14 @@
-import os
+import streamlit as st
+import pandas as pd
+import altair as alt
+from pathlib import Path
+from io import BytesIO
+import qrcode
 import calendar
 from datetime import datetime
 
-import altair as alt
-import pandas as pd
-import qrcode
-import streamlit as st
-from io import BytesIO
-from pathlib import Path
-
 from config import DATA_DIR, DEFAULT_EXCEL_NAME, DEFAULT_EXCEL_PATH
-from auth import (
-    authenticate_user,
-    register_user,
-    get_user_display_name,
-    get_user_role,
-)
+from auth import authenticate_user
 
 # =========================
 # CONFIG พื้นฐาน
@@ -32,9 +25,6 @@ IMAGE_DIR = Path("asset_images")
 QR_IMAGES_DIR = Path("qr_images")
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 QR_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-
-# ✅ URL พื้นฐานของแอปสำหรับฝังใน QR (แก้เป็นของตัวเองได้)
-APP_QR_BASE_URL = "https://mem-system-dashboard.streamlit.app"
 
 MAINT_STATUS_CHOICES = [
     "ยังไม่เคยแจ้งซ่อม",
@@ -61,9 +51,9 @@ CAL_PLAN_SIMPLE_NAME = "calibration_plan_simple.xlsx"
 CAL_PLAN_SIMPLE_PATH = DATA_DIR / CAL_PLAN_SIMPLE_NAME
 CAL_ORIGINAL_NAME = "แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx"
 
-# ====================================================================
+# =========================
 # STYLE: Landing
-# ====================================================================
+# =========================
 def set_landing_style():
     st.markdown(
         """
@@ -204,9 +194,9 @@ def set_landing_style():
         unsafe_allow_html=True,
     )
 
-# ====================================================================
-# STYLE: Login / Register
-# ====================================================================
+# =========================
+# STYLE: Login
+# =========================
 def set_login_style():
     st.markdown(
         """
@@ -279,9 +269,9 @@ def set_login_style():
         unsafe_allow_html=True,
     )
 
-# ====================================================================
+# =========================
 # STYLE: Main app
-# ====================================================================
+# =========================
 def set_main_style():
     st.markdown(
         """
@@ -386,7 +376,7 @@ def set_main_style():
             flex-wrap: wrap;
         }
         .mem-hero-metric{
-            background: #FFFFFF;
+            background: #ffffff;
             border-radius: 18px;
             padding: 8px 12px;
             min-width: 165px;
@@ -517,6 +507,7 @@ def set_main_style():
             color:#6B7280;
         }
 
+        /* ---- ปฏิทินแบบ grid ---- */
         .cal-calendar-wrapper{
             margin-top:8px;
         }
@@ -567,6 +558,7 @@ def set_main_style():
             color:#FFFFFF;
         }
 
+        /* ---- การ์ดรายการเครื่องมือสอบเทียบ ---- */
         .cal-equip-container{
             margin-top:12px;
         }
@@ -615,12 +607,13 @@ def set_main_style():
         unsafe_allow_html=True,
     )
 
-# ====================================================================
+# =========================
 # Excel helpers (ครุภัณฑ์)
-# ====================================================================
+# =========================
 def get_available_excel_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sorted([p.name for p in DATA_DIR.glob("*.xls*")])
+
 
 def init_excel_file_name():
     if "excel_file_name" in st.session_state:
@@ -638,12 +631,14 @@ def init_excel_file_name():
     else:
         st.session_state["excel_file_name"] = None
 
+
 def get_current_excel_path() -> Path | None:
     init_excel_file_name()
     name = st.session_state.get("excel_file_name")
     if not name:
         return None
     return DATA_DIR / name
+
 
 def load_equipment_data() -> pd.DataFrame:
     path = get_current_excel_path()
@@ -676,6 +671,7 @@ def load_equipment_data() -> pd.DataFrame:
         st.error(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
         return pd.DataFrame()
 
+
 def save_equipment_data(df: pd.DataFrame):
     path = get_current_excel_path()
     if path is None:
@@ -689,10 +685,11 @@ def save_equipment_data(df: pd.DataFrame):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์ Excel: {e}")
 
-# ====================================================================
+# =========================
 # Helpers สำหรับ "แจ้งซ่อม / บำรุงรักษา"
-# ====================================================================
+# =========================
 def build_maintenance_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """สรุปจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม"""
     if "สถานะแจ้งซ่อม" not in df.columns:
         return pd.DataFrame()
 
@@ -705,7 +702,13 @@ def build_maintenance_summary(df: pd.DataFrame) -> pd.DataFrame:
     )
     return summary
 
+
 def calculate_maintenance_timers(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    ตารางแจ้งเตือนเวลาคงเหลือในการซ่อม
+    ใช้ 'วันที่แจ้งซ่อมล่าสุด' + 'ระยะเวลาซ่อมที่กำหนด (วัน)'
+    ถ้าไม่ได้กำหนดวัน → ใช้ค่า default 7 วัน
+    """
     if "สถานะแจ้งซ่อม" not in df.columns:
         return pd.DataFrame()
     if MAINT_REQUEST_DATE_COL not in df.columns:
@@ -720,6 +723,7 @@ def calculate_maintenance_timers(df: pd.DataFrame) -> pd.DataFrame:
     else:
         est_days = pd.Series(pd.NA, index=df.index)
 
+    # เลือกเฉพาะรายการที่แจ้งซ่อมแล้วและมีวันที่
     mask_open = (
         df["สถานะแจ้งซ่อม"].isin(["แจ้งซ่อมแล้ว - กำลังดำเนินการ"])
         & req_dates.notna()
@@ -772,7 +776,13 @@ def calculate_maintenance_timers(df: pd.DataFrame) -> pd.DataFrame:
     timers_df = timers_df[cols]
     return timers_df
 
+
 def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
+    """
+    เคลียร์สถานะแจ้งซ่อมของรายการที่เกิน 'ระยะเวลาซ่อมที่กำหนด (วัน)'
+    ถ้าไม่ได้กำหนดวัน → ใช้ default_limit (7 วัน)
+    เฉพาะรายการที่ยังเป็น 'แจ้งซ่อมแล้ว - กำลังดำเนินการ'
+    """
     if "สถานะแจ้งซ่อม" not in df.columns:
         return df, 0
     if MAINT_REQUEST_DATE_COL not in df.columns:
@@ -783,6 +793,7 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
     today = pd.to_datetime(pd.Timestamp.today().normalize())
     days_diff = (today - req_dates).dt.days
 
+    # ใช้ระยะเวลาซ่อมรายรายการ ถ้าไม่มีให้ใช้ default_limit
     if MAINT_EST_DAYS_COL in df_new.columns:
         limits = pd.to_numeric(df_new[MAINT_EST_DAYS_COL], errors="coerce")
         limits = limits.fillna(default_limit).astype("int64")
@@ -799,6 +810,7 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
     if expired_count == 0:
         return df_new, 0
 
+    # รีเซ็ตสถานะ + ล้างข้อมูลแจ้งซ่อม → ต้องแจ้งใหม่
     df_new.loc[mask_expire, "สถานะแจ้งซ่อม"] = MAINT_STATUS_CHOICES[0]
     df_new.loc[mask_expire, MAINT_REQUEST_DATE_COL] = ""
     if MAINT_EST_DAYS_COL in df_new.columns:
@@ -812,7 +824,13 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
 
     return df_new, expired_count
 
+
 def export_maintenance_excel(df: pd.DataFrame) -> BytesIO:
+    """
+    สร้างไฟล์ Excel สำหรับข้อมูลแจ้งซ่อม
+    - Sheet1: สรุปสถานะแจ้งซ่อม
+    - Sheet2: รายการแจ้งซ่อม + เวลาคงเหลือ
+    """
     summary_df = build_maintenance_summary(df)
     timers_df = calculate_maintenance_timers(df)
 
@@ -831,7 +849,12 @@ def export_maintenance_excel(df: pd.DataFrame) -> BytesIO:
     buffer.seek(0)
     return buffer
 
+
 def ensure_request_dates(df: pd.DataFrame):
+    """
+    เติมวันที่แจ้งซ่อมให้รายการที่สถานะแจ้งซ่อม = 'แจ้งซ่อมแล้ว - กำลังดำเนินการ'
+    แต่ช่องวันที่ยังว่างอยู่ → ใช้วันที่วันนี้เป็นวันที่แจ้งซ่อม
+    """
     if MAINT_REQUEST_DATE_COL not in df.columns:
         df[MAINT_REQUEST_DATE_COL] = ""
 
@@ -847,10 +870,11 @@ def ensure_request_dates(df: pd.DataFrame):
     df_new.loc[mask_need, MAINT_REQUEST_DATE_COL] = today.date()
     return df_new, int(mask_need.sum())
 
-# ====================================================================
+# =========================
 # Helpers สำหรับ "แผนสอบเทียบ"
-# ====================================================================
+# =========================
 def parse_calibration_from_file(path: Path) -> pd.DataFrame:
+    """อ่านไฟล์แผนสอบเทียบแบบเดิม (มีหัวตารางหลายแถว) แล้วจัดให้อยู่ในรูปตาราง DataFrame เดียว"""
     try:
         xls = pd.ExcelFile(path)
     except Exception:
@@ -865,6 +889,7 @@ def parse_calibration_from_file(path: Path) -> pd.DataFrame:
         if raw.empty or len(raw) < 4:
             continue
 
+        # ใช้แถวที่ 3 (index=2) เป็น header
         header_row = raw.iloc[2]
         df = raw.iloc[3:].copy()
         df.columns = header_row
@@ -883,7 +908,13 @@ def parse_calibration_from_file(path: Path) -> pd.DataFrame:
     df_all = df_all.dropna(how="all").reset_index(drop=True)
     return df_all
 
+
 def load_calibration_plan() -> pd.DataFrame:
+    """
+    โหลดข้อมูลแผนสอบเทียบ
+    1) ถ้ามีไฟล์ calibration_plan_simple.xlsx → ใช้ไฟล์นี้
+    2) ถ้ามีไฟล์ แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx → แปลงรูปแบบแล้วใช้
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     if CAL_PLAN_SIMPLE_PATH.exists():
@@ -902,9 +933,12 @@ def load_calibration_plan() -> pd.DataFrame:
 
     return pd.DataFrame()
 
+
 def save_calibration_plan(df: pd.DataFrame):
+    """บันทึกแผนสอบเทียบลงไฟล์ calibration_plan_simple.xlsx"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     base_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
+
     df_to_save = df[base_cols].copy()
     try:
         df_to_save.to_excel(CAL_PLAN_SIMPLE_PATH, index=False)
@@ -912,7 +946,9 @@ def save_calibration_plan(df: pd.DataFrame):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดขณะบันทึกไฟล์แผนสอบเทียบ: {e}")
 
+
 def import_calibration_from_uploaded(uploaded_file) -> pd.DataFrame:
+    """รับไฟล์ที่อัปโหลด → พยายามแปลงแบบเดิมก่อน ถ้าไม่ได้ให้ลองอ่านตรง ๆ"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     temp_path = DATA_DIR / "_uploaded_cal_plan_temp.xlsx"
 
@@ -934,9 +970,9 @@ def import_calibration_from_uploaded(uploaded_file) -> pd.DataFrame:
             except Exception:
                 pass
 
-# ====================================================================
+# =========================
 # รูป & QR helpers
-# ====================================================================
+# =========================
 def get_image_path_from_row(row: pd.Series) -> Path | None:
     val = str(row.get("รูปภาพครุภัณฑ์", "") or "").strip()
     if not val:
@@ -946,6 +982,7 @@ def get_image_path_from_row(row: pd.Series) -> Path | None:
         p = IMAGE_DIR / p.name
     return p
 
+
 def save_uploaded_image(uploaded, asset_code: str) -> str:
     suffix = Path(uploaded.name).suffix or ".png"
     safe_code = asset_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
@@ -954,6 +991,7 @@ def save_uploaded_image(uploaded, asset_code: str) -> str:
     with open(target_path, "wb") as f:
         f.write(uploaded.getbuffer())
     return filename
+
 
 def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
     for col in ["_qr_image_path", "QR Code"]:
@@ -970,6 +1008,7 @@ def get_qr_image_path_from_row(row: pd.Series) -> Path | None:
                 return p
     return None
 
+
 def generate_qr_bytes_for_url(url: str) -> bytes:
     img = qrcode.make(url)
     buf = BytesIO()
@@ -977,9 +1016,9 @@ def generate_qr_bytes_for_url(url: str) -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-# ====================================================================
+# =========================
 # Landing page
-# ====================================================================
+# =========================
 def landing_page():
     set_landing_style()
 
@@ -1002,6 +1041,7 @@ def landing_page():
         unsafe_allow_html=True,
     )
 
+    # ปุ่ม
     st.markdown('<div class="landing-buttons">', unsafe_allow_html=True)
     col1, col2 = st.columns(2, gap="small")
 
@@ -1019,6 +1059,7 @@ def landing_page():
         unsafe_allow_html=True,
     )
 
+    # การ์ด 3 ใบ
     st.markdown(
         """
         <div class="feature-row">
@@ -1060,119 +1101,9 @@ def landing_page():
         st.session_state.logged_in = False
         st.rerun()
 
-# ====================================================================
-# QR public page (อ่านอย่างเดียวเมื่อยังไม่ล็อกอิน)
-# ====================================================================
-def qr_public_page():
-    set_main_style()
-
-    # ดึง code จาก session หรือ query param
-    code = st.session_state.get("qr_code_from_url")
-    if not code:
-        params = st.session_state.get("_url_params", {})
-        if isinstance(params, dict) and "code" in params:
-            v = params["code"]
-            code = v[0] if isinstance(v, list) else v
-
-    st.markdown(
-        '<div class="mem-page-title">รายละเอียดครุภัณฑ์จาก QR Code</div>',
-        unsafe_allow_html=True,
-    )
-    if not code:
-        st.info("ไม่พบรหัสครุภัณฑ์จาก QR Code (parameter 'code')")
-        if st.button("กลับไปหน้าแรก", use_container_width=True):
-            st.session_state.view = "landing"
-            st.rerun()
-        return
-
-    df = load_equipment_data()
-    if df.empty:
-        st.warning("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่ใช้งานอยู่")
-        return
-
-    if ASSET_CODE_COL not in df.columns:
-        st.warning(f"ไม่พบคอลัมน์ '{ASSET_CODE_COL}' ในไฟล์ Excel")
-        return
-
-    matches = df[df[ASSET_CODE_COL].astype(str) == str(code)]
-    if matches.empty:
-        st.error(f"ไม่พบครุภัณฑ์ที่มีรหัส '{code}' ในไฟล์ข้อมูลปัจจุบัน")
-        return
-
-    row = matches.iloc[0]
-    st.markdown(
-        f"""
-        <div class="mem-card">
-          <div class="mem-card-title">รหัสครุภัณฑ์: {code}</div>
-          <div class="mem-card-subtitle">
-            ข้อมูลนี้แสดงในโหมดอ่านอย่างเดียว หากต้องการแจ้งซ่อมหรือเขียนหมายเหตุ
-            กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้ภายใน
-          </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    columns_list = [
-        c
-        for c in df.columns
-        if c
-        not in (
-            "รูปภาพครุภัณฑ์",
-            "สถานะแจ้งซ่อม",
-            MAINT_REQUEST_DATE_COL,
-            MAINT_EST_DAYS_COL,
-            MAINT_DUE_DATE_COL,
-            MAINT_EVAL_COL,
-            MAINT_NOTE_COL,
-        )
-    ]
-    half = (len(columns_list) + 1) // 2
-    left_cols = columns_list[:half]
-    right_cols = columns_list[half:]
-
-    col_left, col_right = st.columns(2)
-    with col_left:
-        for col_name in left_cols:
-            current_val = row.get(col_name, "")
-            st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"qr_public_left_{col_name}",
-                disabled=True,
-            )
-    with col_right:
-        for col_name in right_cols:
-            current_val = row.get(col_name, "")
-            st.text_input(
-                str(col_name),
-                value="" if pd.isna(current_val) else str(current_val),
-                key=f"qr_public_right_{col_name}",
-                disabled=True,
-            )
-
-    st.markdown("### สถานะแจ้งซ่อมปัจจุบัน")
-    st.write(str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or MAINT_STATUS_CHOICES[0]))
-
-    st.markdown("### หมายเหตุการซ่อม (อ่านอย่างเดียว)")
-    st.text_area(
-        "หมายเหตุการซ่อม",
-        value=str(row.get(MAINT_NOTE_COL, "") or ""),
-        key="qr_public_note",
-        disabled=True,
-    )
-
-    st.info("หากต้องการแจ้งซ่อม / เขียนหมายเหตุ กรุณาเข้าสู่ระบบก่อน")
-
-    if st.button("เข้าสู่ระบบเพื่อแจ้งซ่อม / เขียนหมายเหตุ", use_container_width=True):
-        st.session_state.qr_code_pending = str(code)
-        st.session_state.view = "login"
-        st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ====================================================================
+# =========================
 # Login page
-# ====================================================================
+# =========================
 def login_page():
     set_login_style()
 
@@ -1189,17 +1120,12 @@ def login_page():
     login_clicked = st.button("เข้าสู่ระบบ", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    register_clicked = st.button("📝 สมัครใช้งานใหม่", use_container_width=True)
     back_clicked = st.button("⬅️ กลับไปหน้าแรก", use_container_width=True)
 
     st.markdown(
-        '<div class="mem-login-footer">บัญชีใหม่จะมีสิทธิ์ดูรายการครุภัณฑ์ และแจ้งซ่อม/เขียนหมายเหตุได้เท่านั้น หากต้องการสิทธิ์ admin กรุณาติดต่อผู้ดูแลระบบ</div>',
+        '<div class="mem-login-footer">หากลืมรหัสผ่าน กรุณาติดต่อผู้ดูแลระบบ</div>',
         unsafe_allow_html=True,
     )
-
-    if register_clicked:
-        st.session_state.view = "register"
-        st.rerun()
 
     if back_clicked:
         st.session_state.view = "landing"
@@ -1209,100 +1135,24 @@ def login_page():
     if login_clicked:
         ok, display_name = authenticate_user(username, password)
         if ok:
-            role = get_user_role(username) or "user"
-
             st.session_state.logged_in = True
             st.session_state.username = username
-            st.session_state.display_name = display_name or username
-            st.session_state.role = role
-
-            # ถ้ามี QR pending / code จาก URL ให้ไปหน้า "รายการครุภัณฑ์"
-            pending_code = st.session_state.get("qr_code_pending")
-            if pending_code:
-                st.session_state.qr_code_from_url = str(pending_code)
-
-            # ตั้งเมนูเริ่มต้น
-            if st.session_state.get("qr_code_from_url"):
-                st.session_state.current_menu = "รายการครุภัณฑ์"
-            else:
-                st.session_state.current_menu = (
-                    "หน้าหลัก" if role == "admin" else "รายการครุภัณฑ์"
-                )
-
+            st.session_state.display_name = display_name
             st.session_state.view = "app"
 
-            # ฝัง username + (ถ้ามี) code ไว้ใน query param เพื่อกัน F5 หลุด
+            # 👉 บันทึก token แบบง่าย ๆ ไว้ใน URL กันหลุดตอนกด F5
             try:
-                qp = {"user": username}
-                code_for_url = st.session_state.get("qr_code_from_url")
-                if code_for_url:
-                    qp["code"] = str(code_for_url)
-                st.query_params.update(qp)
+                _set_query_params(user=username, auto_login="1")
             except Exception:
-                try:
-                    code_for_url = st.session_state.get("qr_code_from_url")
-                    if code_for_url:
-                        st.experimental_set_query_params(
-                            user=username, code=str(code_for_url)
-                        )
-                    else:
-                        st.experimental_set_query_params(user=username)
-                except Exception:
-                    pass
-
-            # เคลียร์ pending
-            st.session_state.qr_code_pending = None
+                pass
 
             st.rerun()
         else:
             st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
 
-# ====================================================================
-# Register page
-# ====================================================================
-def register_page():
-    set_login_style()
-
-    st.markdown('<div class="mem-login-title">สมัครใช้งานระบบ</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="mem-login-sub">สร้างบัญชีผู้ใช้ใหม่สำหรับแจ้งซ่อมและดูรายการครุภัณฑ์</div>',
-        unsafe_allow_html=True,
-    )
-
-    username = st.text_input("👤 ชื่อผู้ใช้ (ใช้สำหรับเข้าสู่ระบบ)", key="reg_username")
-    display_name = st.text_input("ชื่อ-สกุล / ชื่อที่แสดงในระบบ", key="reg_display_name")
-    password = st.text_input("🔐 รหัสผ่าน", type="password", key="reg_password")
-    password2 = st.text_input("🔐 ยืนยันรหัสผ่าน", type="password", key="reg_password2")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        create_clicked = st.button("สร้างบัญชี", use_container_width=True)
-    with col2:
-        back_clicked = st.button("กลับไปหน้าเข้าสู่ระบบ", use_container_width=True)
-
-    if back_clicked:
-        st.session_state.view = "login"
-        st.rerun()
-
-    if create_clicked:
-        if not username or not password:
-            st.warning("กรุณากรอกชื่อผู้ใช้และรหัสผ่านให้ครบ")
-            return
-        if password != password2:
-            st.warning("รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน")
-            return
-
-        success, msg = register_user(username, password, display_name)
-        if success:
-            st.success(msg + " สามารถเข้าสู่ระบบได้ทันทีด้วยชื่อผู้ใช้และรหัสผ่านที่สร้างไว้")
-            st.session_state.view = "login"
-            st.rerun()
-        else:
-            st.error(msg)
-
-# ====================================================================
+# =========================
 # Helper: Altair style
-# ====================================================================
+# =========================
 def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
     return (
         chart.properties(width=width, height=height)
@@ -1313,16 +1163,11 @@ def styled_chart(chart: alt.Chart, width: int, height: int) -> alt.Chart:
         )
     )
 
-# ====================================================================
-# หน้า "หน้าหลัก" (admin เท่านั้น)
-# ====================================================================
+# =========================
+# หน้า "หน้าหลัก"
+# =========================
 def page_home():
     set_main_style()
-
-    role = st.session_state.get("role", "user")
-    if role != "admin":
-        st.warning("หน้านี้สำหรับผู้ดูแลระบบเท่านั้น")
-        return
 
     st.markdown(
         """
@@ -1545,9 +1390,9 @@ def page_home():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ====================================================================
-# ตาราง + เลือกแถว (ใช้เฉพาะ admin)
-# ====================================================================
+# =========================
+# ตาราง + เลือกแถว
+# =========================
 def equipment_table_with_selection(df: pd.DataFrame):
     df_with_sel = df.copy()
     if "เลือก" not in df_with_sel.columns:
@@ -1570,447 +1415,272 @@ def equipment_table_with_selection(df: pd.DataFrame):
     selected_rows = edited_df[edited_df["เลือก"]].index.tolist()
     st.session_state["rows_for_delete"] = selected_rows
 
-# ====================================================================
-# หน้า "รายการครุภัณฑ์" (admin กับ user แสดงไม่เหมือนกัน)
-# ====================================================================
+# =========================
+# หน้า "รายการครุภัณฑ์"
+# =========================
 def page_equipment_list():
     set_main_style()
-
-    role = st.session_state.get("role", "user")
-    is_admin = role == "admin"
-
     st.markdown(
         '<div class="mem-page-title">รายการครุภัณฑ์</div>',
         unsafe_allow_html=True,
     )
 
+    st.markdown("### เลือกไฟล์ Excel ที่ต้องการใช้งาน")
+
     files = get_available_excel_files()
     init_excel_file_name()
     current_name = st.session_state.get("excel_file_name")
 
-    if is_admin:
-        st.markdown("### เลือกไฟล์ Excel ที่ต้องการใช้งาน")
-
-        if not files and not DEFAULT_EXCEL_PATH.exists():
-            st.info("ยังไม่มีไฟล์ Excel ในโฟลเดอร์ data กรุณาอัปโหลดไฟล์ใหม่")
-        else:
-            if current_name not in files and DEFAULT_EXCEL_PATH.exists():
-                current_name = DEFAULT_EXCEL_NAME
-                st.session_state["excel_file_name"] = current_name
-            elif current_name not in files and files:
-                current_name = files[0]
-                st.session_state["excel_file_name"] = current_name
-
-            if files:
-                idx_default = files.index(current_name)
-                selected_file = st.selectbox(
-                    "ไฟล์สำหรับใช้งาน",
-                    options=files,
-                    index=idx_default,
-                    key="excel_select",
-                )
-
-                col_use, col_path = st.columns([1, 1])
-                with col_use:
-                    if st.button("ใช้ไฟล์นี้", key="btn_use_excel"):
-                        st.session_state["excel_file_name"] = selected_file
-                        st.success(f"กำลังใช้งานไฟล์: {selected_file}")
-                        st.rerun()
-                with col_path:
-                    path = DATA_DIR / current_name
-                    st.caption(f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`")
-
-        with st.expander("📁 อัปโหลดไฟล์ Excel ใหม่ (เพิ่ม/แทนที่ไฟล์เดิม)", expanded=False):
-            uploaded = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"])
-            if uploaded is not None:
-                save_path = DATA_DIR / uploaded.name
-                try:
-                    DATA_DIR.mkdir(parents=True, exist_ok=True)
-                    with open(save_path, "wb") as f:
-                        f.write(uploaded.getbuffer())
-                    st.success(f"บันทึกไฟล์ {uploaded.name} ลงโฟลเดอร์ data แล้ว")
-
-                    st.session_state["excel_file_name"] = uploaded.name
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"ไม่สามารถบันทึกไฟล์ได้: {e}")
+    if not files and not DEFAULT_EXCEL_PATH.exists():
+        st.info("ยังไม่มีไฟล์ Excel ในโฟลเดอร์ data กรุณาอัปโหลดไฟล์ใหม่")
     else:
-        path = get_current_excel_path()
-        if path is None or not path.exists():
-            st.info("ผู้ดูแลระบบยังไม่ได้เตรียมไฟล์ข้อมูลครุภัณฑ์สำหรับใช้งาน")
-        else:
-            st.caption(f"กำลังดึงข้อมูลจากไฟล์ที่ผู้ดูแลระบบตั้งค่าไว้: **{path.name}**")
+        if current_name not in files and DEFAULT_EXCEL_PATH.exists():
+            current_name = DEFAULT_EXCEL_NAME
+            st.session_state["excel_file_name"] = current_name
+        elif current_name not in files and files:
+            current_name = files[0]
+            st.session_state["excel_file_name"] = current_name
+
+        if files:
+            idx_default = files.index(current_name)
+            selected_file = st.selectbox(
+                "ไฟล์สำหรับใช้งาน",
+                options=files,
+                index=idx_default,
+                key="excel_select",
+            )
+
+            col_use, col_path = st.columns([1, 1])
+            with col_use:
+                if st.button("ใช้ไฟล์นี้", key="btn_use_excel"):
+                    st.session_state["excel_file_name"] = selected_file
+                    st.success(f"กำลังใช้งานไฟล์: {selected_file}")
+                    st.rerun()
+            with col_path:
+                path = DATA_DIR / current_name
+                st.caption(f"ไฟล์ที่ใช้งานอยู่: **{current_name}**\n\nที่อยู่ไฟล์: `{path}`")
+
+    with st.expander("📁 อัปโหลดไฟล์ Excel ใหม่ (เพิ่ม/แทนที่ไฟล์เดิม)", expanded=False):
+        uploaded = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"])
+        if uploaded is not None:
+            save_path = DATA_DIR / uploaded.name
+            try:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                with open(save_path, "wb") as f:
+                    f.write(uploaded.getbuffer())
+                st.success(f"บันทึกไฟล์ {uploaded.name} ลงโฟลเดอร์ data แล้ว")
+
+                st.session_state["excel_file_name"] = uploaded.name
+                st.rerun()
+            except Exception as e:
+                st.error(f"ไม่สามารถบันทึกไฟล์ได้: {e}")
 
     df = load_equipment_data()
     if df.empty:
         st.info("ยังไม่มีข้อมูลในไฟล์ Excel ที่เลือกอยู่")
         return
 
-    # ---------- ถ้ามี code จาก QR ให้เลือกแถวให้เอง ----------
-    qr_code = st.session_state.get("qr_code_from_url")
-    qr_match_index = None
-    if qr_code and ASSET_CODE_COL in df.columns:
-        try:
-            qr_matches = df.index[df[ASSET_CODE_COL].astype(str) == str(qr_code)].tolist()
-        except Exception:
-            qr_matches = []
-        if qr_matches:
-            qr_match_index = qr_matches[0]
-            st.session_state.selected_row_idx = qr_match_index
-            st.markdown(
-                f"""
-                <div class="mem-card" style="padding:12px 18px;margin-bottom:18px;">
-                  <div class="mem-card-title" style="font-size:16px;">
-                    เปิดจาก QR Code – รหัสครุภัณฑ์ {qr_code}
-                  </div>
-                  <div class="mem-card-subtitle">
-                    ระบบกำลังแสดงรายละเอียดของครุภัณฑ์ที่สแกนจาก QR Code นี้
-                    หากเปลี่ยนการเลือกในช่องด้านล่าง ระบบจะย้ายไปยังรายการอื่นตามที่เลือก
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.info(f"ไม่พบครุภัณฑ์ที่มีรหัส {qr_code} ในไฟล์ Excel ปัจจุบัน")
+    st.markdown("### ตารางรายการครุภัณฑ์")
+    equipment_table_with_selection(df)
 
-    # ------------------------------ admin mode ------------------------------
-    if is_admin:
-        st.markdown("### ตารางรายการครุภัณฑ์")
-        equipment_table_with_selection(df)
+    st.markdown("#### จัดการลบข้อมูล")
+    col_del1, col_del2 = st.columns([1, 1.2])
 
-        st.markdown("#### จัดการลบข้อมูล")
-        col_del1, col_del2 = st.columns([1, 1.2])
-
-        with col_del1:
-            if st.button("🗑️ ลบรายการที่เลือก", use_container_width=True):
-                rows = st.session_state.get("rows_for_delete", [])
-                if not rows:
-                    st.warning("กรุณาติ๊กเลือกอย่างน้อย 1 รายการในคอลัมน์ 'เลือก' ก่อนลบ")
-                else:
-                    df_new = df.drop(index=rows).reset_index(drop=True)
-                    save_equipment_data(df_new)
-                    st.session_state["selected_row_idx"] = 0
-                    st.success(f"ลบ {len(rows)} รายการเรียบร้อยแล้ว")
-                    st.rerun()
-
-        with col_del2:
-            confirm_all = st.checkbox(
-                "ยืนยันการลบข้อมูลทั้งหมดในตาราง", key="confirm_delete_all"
-            )
-            if st.button("🧹 ลบข้อมูลทั้งหมด", use_container_width=True):
-                if not confirm_all:
-                    st.warning("กรุณาติ๊ก 'ยืนยันการลบข้อมูลทั้งหมดในตาราง' ก่อนลบทั้งหมด")
-                else:
-                    df_new = df.iloc[0:0]
-                    save_equipment_data(df_new)
-                    st.session_state["selected_row_idx"] = 0
-                    st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
-                    st.rerun()
-
-        def format_option_admin(i: int) -> str:
-            row = df.iloc[i]
-            name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
-            code = str(row.get(ASSET_CODE_COL, ""))
-            return f"{i+1:03d} - {name} ({code})"
-
-        options_index = list(df.index)
-        default_idx = st.session_state.get("selected_row_idx", 0)
-        if default_idx >= len(df):
-            default_idx = 0
-
-        selected_idx_box = st.selectbox(
-            "เลือกครุภัณฑ์สำหรับดู/แก้ไขรายละเอียด",
-            options=options_index,
-            index=default_idx,
-            format_func=format_option_admin,
-            key="equip_select_box_admin",
-        )
-
-        if selected_idx_box != st.session_state.get("selected_row_idx", 0):
-            st.session_state.selected_row_idx = selected_idx_box
-            st.rerun()
-
-        selected_idx = st.session_state.get("selected_row_idx", 0)
-
-        st.markdown("### รายละเอียดครุภัณฑ์")
-        st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
-
-        if len(df) == 0:
-            st.info("ยังไม่มีข้อมูลให้แสดง")
-            return
-
-        row = df.iloc[selected_idx].copy()
-        asset_code = str(row.get(ASSET_CODE_COL, ""))
-
-        columns_list = [
-            c
-            for c in df.columns
-            if c not in (
-                "รูปภาพครุภัณฑ์",
-                "สถานะแจ้งซ่อม",
-                MAINT_REQUEST_DATE_COL,
-                MAINT_EST_DAYS_COL,
-                MAINT_DUE_DATE_COL,
-                MAINT_EVAL_COL,
-                MAINT_NOTE_COL,
-            )
-        ]
-
-        half = (len(columns_list) + 1) // 2
-        left_cols = columns_list[:half]
-        right_cols = columns_list[half:]
-
-        col_left, col_right = st.columns(2)
-        updated_values: dict[str, str] = {}
-
-        with col_left:
-            for col_name in left_cols:
-                current_val = row.get(col_name, "")
-                new_val = st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_left_{col_name}_{selected_idx}",
-                )
-                updated_values[col_name] = new_val
-
-        with col_right:
-            for col_name in right_cols:
-                current_val = row.get(col_name, "")
-                new_val = st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_right_{col_name}_{selected_idx}",
-                )
-                updated_values[col_name] = new_val
-
-        st.markdown("### สถานะแจ้งซ่อม")
-        current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
-        if current_maint not in MAINT_STATUS_CHOICES:
-            current_maint = MAINT_STATUS_CHOICES[0]
-        maint_select = st.selectbox(
-            "สถานะแจ้งซ่อม",
-            MAINT_STATUS_CHOICES,
-            index=MAINT_STATUS_CHOICES.index(current_maint),
-            key=f"maint_status_admin_{selected_idx}",
-        )
-        updated_values["สถานะแจ้งซ่อม"] = maint_select
-
-        st.markdown("### หมายเหตุการซ่อม")
-        current_note = str(row.get(MAINT_NOTE_COL, "") or "")
-        maint_note_admin = st.text_area(
-            "หมายเหตุการซ่อม (อธิบายสาเหตุ / รายละเอียดการซ่อม)",
-            value=current_note,
-            key=f"maint_note_admin_{selected_idx}",
-        )
-        updated_values[MAINT_NOTE_COL] = maint_note_admin
-
-        st.markdown("### QR Code และรูปภาพครุภัณฑ์")
-        qr_col, img_col = st.columns([1, 1])
-
-        with qr_col:
-            st.subheader("QR Code ของครุภัณฑ์")
-            qr_path = get_qr_image_path_from_row(row)
-            qr_bytes_for_download = None
-
-            if qr_path and qr_path.exists():
-                st.image(str(qr_path), use_column_width=True)
-                with open(qr_path, "rb") as f:
-                    qr_bytes_for_download = f.read()
+    with col_del1:
+        if st.button("🗑️ ลบรายการที่เลือก", use_container_width=True):
+            rows = st.session_state.get("rows_for_delete", [])
+            if not rows:
+                st.warning("กรุณาติ๊กเลือกอย่างน้อย 1 รายการในคอลัมน์ 'เลือก' ก่อนลบ")
             else:
-                # ใช้ URL ของแอปเดียวกัน พร้อม parameter code
-                url_for_qr = f"{APP_QR_BASE_URL}/?code={asset_code}"
-                qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
-                st.image(qr_bytes_for_download, use_column_width=True)
-
-            st.caption(asset_code)
-            st.write("สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน")
-
-            if qr_bytes_for_download:
-                st.download_button(
-                    "⬇️ ดาวน์โหลด QR (PNG)",
-                    data=qr_bytes_for_download,
-                    file_name=f"{asset_code}_qr.png",
-                    mime="image/png",
-                    use_container_width=True,
-                )
-
-        with img_col:
-            st.subheader("รูปภาพครุภัณฑ์")
-            current_img_path = get_image_path_from_row(row)
-            if current_img_path and current_img_path.exists():
-                st.image(str(current_img_path), caption="รูปภาพปัจจุบัน", use_column_width=True)
-            else:
-                st.info("ยังไม่มีรูปภาพสำหรับรายการนี้")
-
-            uploaded_img = st.file_uploader(
-                "อัปโหลดรูปภาพใหม่ (ถ้าไม่เลือก ระบบจะใช้ของเดิม)",
-                type=["png", "jpg", "jpeg"],
-                key=f"upload_image_admin_{selected_idx}",
-            )
-
-        st.write("")
-        if st.button("บันทึกการแก้ไข", type="primary"):
-            df_current = load_equipment_data()
-            if selected_idx >= len(df_current):
-                st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
-                return
-
-            for col in updated_values:
-                if col not in df_current.columns:
-                    continue
-                raw_val = updated_values.get(col, "")
-                orig_dtype = df_current[col].dtype
-
-                if pd.api.types.is_numeric_dtype(orig_dtype):
-                    if raw_val == "":
-                        df_current.at[selected_idx, col] = pd.NA
-                    else:
-                        try:
-                            df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
-                        except Exception:
-                            df_current.at[selected_idx, col] = raw_val
-                else:
-                    df_current.at[selected_idx, col] = raw_val
-
-            if uploaded_img is not None:
-                filename = save_uploaded_image(uploaded_img, asset_code)
-                if "รูปภาพครุภัณฑ์" not in df_current.columns:
-                    df_current["รูปภาพครุภัณฑ์"] = ""
-                df_current.at[selected_idx, "รูปภาพครุภัณฑ์"] = filename
-
-            save_equipment_data(df_current)
-            st.rerun()
-
-    # ------------------------------ normal user mode ------------------------------
-    else:
-        st.markdown("### ตารางรายการครุภัณฑ์ (โหมดอ่านอย่างเดียว)")
-        view_cols = [c for c in df.columns if c != "รูปภาพครุภัณฑ์"]
-        st.dataframe(
-            df[view_cols],
-            hide_index=True,
-            use_container_width=True,
-        )
-
-        st.markdown("---")
-
-        def format_option_user(i: int) -> str:
-            row = df.iloc[i]
-            name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
-            code = str(row.get(ASSET_CODE_COL, ""))
-            return f"{i+1:03d} - {name} ({code})"
-
-        options_index = list(df.index)
-        default_idx = st.session_state.get("selected_row_idx", 0)
-        if default_idx >= len(df):
-            default_idx = 0
-
-        selected_idx_box = st.selectbox(
-            "เลือกครุภัณฑ์ที่ต้องการดูรายละเอียด / แจ้งซ่อม",
-            options=options_index,
-            index=default_idx,
-            format_func=format_option_user,
-            key="equip_select_box_user",
-        )
-
-        if selected_idx_box != st.session_state.get("selected_row_idx", 0):
-            st.session_state.selected_row_idx = selected_idx_box
-            st.rerun()
-
-        selected_idx = st.session_state.get("selected_row_idx", 0)
-        if selected_idx >= len(df):
-            selected_idx = 0
-
-        row = df.iloc[selected_idx].copy()
-        asset_code = str(row.get(ASSET_CODE_COL, ""))
-
-        st.markdown("### รายละเอียดครุภัณฑ์ (อ่านอย่างเดียว)")
-        columns_list = [
-            c
-            for c in df.columns
-            if c not in (
-                "รูปภาพครุภัณฑ์",
-                "สถานะแจ้งซ่อม",
-                MAINT_REQUEST_DATE_COL,
-                MAINT_EST_DAYS_COL,
-                MAINT_DUE_DATE_COL,
-                MAINT_EVAL_COL,
-                MAINT_NOTE_COL,
-            )
-        ]
-        half = (len(columns_list) + 1) // 2
-        left_cols = columns_list[:half]
-        right_cols = columns_list[half:]
-
-        col_left, col_right = st.columns(2)
-
-        with col_left:
-            for col_name in left_cols:
-                current_val = row.get(col_name, "")
-                st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_left_view_{col_name}_{selected_idx}",
-                    disabled=True,
-                )
-
-        with col_right:
-            for col_name in right_cols:
-                current_val = row.get(col_name, "")
-                st.text_input(
-                    str(col_name),
-                    value="" if pd.isna(current_val) else str(current_val),
-                    key=f"detail_right_view_{col_name}_{selected_idx}",
-                    disabled=True,
-                )
-
-        st.markdown("### แจ้งซ่อม / บันทึกหมายเหตุ (สำหรับผู้ใช้ทั่วไป)")
-
-        current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
-        if current_maint not in MAINT_STATUS_CHOICES:
-            current_maint = MAINT_STATUS_CHOICES[0]
-
-        st.write(f"**สถานะแจ้งซ่อมปัจจุบัน:** {current_maint}")
-
-        note_default = str(row.get(MAINT_NOTE_COL, "") or "")
-        note_user = st.text_area(
-            "เขียนรายละเอียด / สาเหตุที่แจ้งซ่อม",
-            value=note_default,
-            key=f"maint_note_user_{selected_idx}",
-        )
-
-        if st.button("📩 ส่งคำขอแจ้งซ่อม / บันทึกหมายเหตุ", use_container_width=True):
-            df_current = load_equipment_data()
-            if selected_idx not in df_current.index:
-                st.error("ไม่พบแถวข้อมูลนี้ในไฟล์แล้ว กรุณารีเฟรชหน้า")
-            else:
-                today_date = datetime.today().date()
-                df_current.at[selected_idx, "สถานะแจ้งซ่อม"] = "แจ้งซ่อมแล้ว - กำลังดำเนินการ"
-                df_current.at[selected_idx, MAINT_REQUEST_DATE_COL] = today_date
-                df_current.at[selected_idx, MAINT_NOTE_COL] = note_user
-
-                if MAINT_EST_DAYS_COL in df_current.columns:
-                    if (
-                        pd.isna(df_current.at[selected_idx, MAINT_EST_DAYS_COL])
-                        or df_current.at[selected_idx, MAINT_EST_DAYS_COL] in ("", None)
-                    ):
-                        df_current.at[selected_idx, MAINT_EST_DAYS_COL] = 7
-
-                save_equipment_data(df_current)
-                st.success("บันทึกคำขอแจ้งซ่อมและหมายเหตุเรียบร้อยแล้ว ระบบอัปเดตแบบ Real-time")
+                df_new = df.drop(index=rows).reset_index(drop=True)
+                save_equipment_data(df_new)
+                st.session_state["selected_row_idx"] = 0
+                st.success(f"ลบ {len(rows)} รายการเรียบร้อยแล้ว")
                 st.rerun()
 
-# ====================================================================
-# หน้า "แจ้งซ่อม / บำรุงรักษา" (admin)
-# ====================================================================
-def page_maintenance():
-    set_main_style()
+    with col_del2:
+        confirm_all = st.checkbox(
+            "ยืนยันการลบข้อมูลทั้งหมดในตาราง", key="confirm_delete_all"
+        )
+        if st.button("🧹 ลบข้อมูลทั้งหมด", use_container_width=True):
+            if not confirm_all:
+                st.warning("กรุณาติ๊ก 'ยืนยันการลบข้อมูลทั้งหมดในตาราง' ก่อนลบทั้งหมด")
+            else:
+                df_new = df.iloc[0:0]
+                save_equipment_data(df_new)
+                st.session_state["selected_row_idx"] = 0
+                st.success("ลบข้อมูลทั้งหมดจากตารางเรียบร้อยแล้ว")
+                st.rerun()
 
-    role = st.session_state.get("role", "user")
-    if role != "admin":
-        st.warning("หน้านี้สำหรับผู้ดูแลระบบเท่านั้น ผู้ใช้ทั่วไปให้แจ้งซ่อมผ่านหน้า 'รายการครุภัณฑ์' หรือสแกน QR")
+    def format_option(i: int) -> str:
+        row = df.iloc[i]
+        name = str(row.get("ชื่อ", "ไม่ทราบชื่อ"))
+        code = str(row.get(ASSET_CODE_COL, ""))
+        return f"{i+1:03d} - {name} ({code})"
+
+    options_index = list(df.index)
+    default_idx = st.session_state.get("selected_row_idx", 0)
+    if default_idx >= len(df):
+        default_idx = 0
+
+    selected_idx_box = st.selectbox(
+        "เลือกครุภัณฑ์สำหรับดู/แก้ไขรายละเอียด",
+        options=options_index,
+        index=default_idx,
+        format_func=format_option,
+        key="equip_select_box_admin",
+    )
+
+    if selected_idx_box != st.session_state.get("selected_row_idx", 0):
+        st.session_state.selected_row_idx = selected_idx_box
+        st.rerun()
+
+    selected_idx = st.session_state.get("selected_row_idx", 0)
+
+    st.markdown("### รายละเอียดครุภัณฑ์")
+    st.markdown("#### ฟอร์มรายละเอียด", unsafe_allow_html=True)
+
+    if len(df) == 0:
+        st.info("ยังไม่มีข้อมูลให้แสดง")
         return
 
+    row = df.iloc[selected_idx].copy()
+    asset_code = str(row.get(ASSET_CODE_COL, ""))
+
+    columns_list = [
+        c
+        for c in df.columns
+        if c not in (
+            "รูปภาพครุภัณฑ์",
+            "สถานะแจ้งซ่อม",
+            MAINT_REQUEST_DATE_COL,
+            MAINT_EST_DAYS_COL,
+            MAINT_DUE_DATE_COL,
+            MAINT_EVAL_COL,
+            MAINT_NOTE_COL,
+        )
+    ]
+
+    half = (len(columns_list) + 1) // 2
+    left_cols = columns_list[:half]
+    right_cols = columns_list[half:]
+
+    col_left, col_right = st.columns(2)
+    updated_values: dict[str, str] = {}
+
+    with col_left:
+        for col_name in left_cols:
+            current_val = row.get(col_name, "")
+            new_val = st.text_input(
+                str(col_name),
+                value="" if pd.isna(current_val) else str(current_val),
+                key=f"detail_left_{col_name}_{selected_idx}",
+            )
+            updated_values[col_name] = new_val
+
+    with col_right:
+        for col_name in right_cols:
+            current_val = row.get(col_name, "")
+            new_val = st.text_input(
+                str(col_name),
+                value="" if pd.isna(current_val) else str(current_val),
+                key=f"detail_right_{col_name}_{selected_idx}",
+            )
+            updated_values[col_name] = new_val
+
+    st.markdown("### สถานะแจ้งซ่อม")
+    current_maint = str(row.get("สถานะแจ้งซ่อม", MAINT_STATUS_CHOICES[0]) or "")
+    if current_maint not in MAINT_STATUS_CHOICES:
+        current_maint = MAINT_STATUS_CHOICES[0]
+    maint_select = st.selectbox(
+        "สถานะแจ้งซ่อม",
+        MAINT_STATUS_CHOICES,
+        index=MAINT_STATUS_CHOICES.index(current_maint),
+        key=f"maint_status_admin_{selected_idx}",
+    )
+    updated_values["สถานะแจ้งซ่อม"] = maint_select
+
+    st.markdown("### QR Code และรูปภาพครุภัณฑ์")
+    qr_col, img_col = st.columns([1, 1])
+
+    with qr_col:
+        st.subheader("QR Code ของครุภัณฑ์")
+        qr_path = get_qr_image_path_from_row(row)
+        qr_bytes_for_download = None
+
+        if qr_path and qr_path.exists():
+            st.image(str(qr_path), use_column_width=True)
+            with open(qr_path, "rb") as f:
+                qr_bytes_for_download = f.read()
+        else:
+            url_for_qr = f"https://memsystemdashboard-qr.streamlit.app/?code={asset_code}"
+            qr_bytes_for_download = generate_qr_bytes_for_url(url_for_qr)
+            st.image(qr_bytes_for_download, use_column_width=True)
+
+        st.caption(asset_code)
+        st.write("สแกน QR นี้เพื่อเปิดหน้าข้อมูลครุภัณฑ์จากอุปกรณ์อื่น ๆ ได้เช่นกัน")
+
+        if qr_bytes_for_download:
+            st.download_button(
+                "⬇️ ดาวน์โหลด QR (PNG)",
+                data=qr_bytes_for_download,
+                file_name=f"{asset_code}_qr.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+
+    with img_col:
+        st.subheader("รูปภาพครุภัณฑ์")
+        current_img_path = get_image_path_from_row(row)
+        if current_img_path and current_img_path.exists():
+            st.image(str(current_img_path), caption="รูปภาพปัจจุบัน", use_column_width=True)
+        else:
+            st.info("ยังไม่มีรูปภาพสำหรับรายการนี้")
+
+        uploaded_img = st.file_uploader(
+            "อัปโหลดรูปภาพใหม่ (ถ้าไม่เลือก ระบบจะใช้ของเดิม)",
+            type=["png", "jpg", "jpeg"],
+            key=f"upload_image_admin_{selected_idx}",
+        )
+
+    st.write("")
+    if st.button("บันทึกการแก้ไข", type="primary"):
+        df_current = load_equipment_data()
+        if selected_idx >= len(df_current):
+            st.error("แถวข้อมูลนี้ไม่อยู่ในตารางแล้ว กรุณารีเฟรชหน้าเว็บ")
+            return
+
+        for col in updated_values:
+            if col not in df_current.columns:
+                continue
+            raw_val = updated_values.get(col, "")
+            orig_dtype = df_current[col].dtype
+
+            if pd.api.types.is_numeric_dtype(orig_dtype):
+                if raw_val == "":
+                    df_current.at[selected_idx, col] = pd.NA
+                else:
+                    try:
+                        df_current.at[selected_idx, col] = pd.to_numeric(raw_val)
+                    except Exception:
+                        df_current.at[selected_idx, col] = raw_val
+            else:
+                df_current.at[selected_idx, col] = raw_val
+
+        if uploaded_img is not None:
+            filename = save_uploaded_image(uploaded_img, asset_code)
+            if "รูปภาพครุภัณฑ์" not in df_current.columns:
+                df_current["รูปภาพครุภัณฑ์"] = ""
+            df_current.at[selected_idx, "รูปภาพครุภัณฑ์"] = filename
+
+        save_equipment_data(df_current)
+        st.rerun()
+
+# =========================
+# หน้า "แจ้งซ่อม / บำรุงรักษา"
+# =========================
+def page_maintenance():
+    set_main_style()
     st.markdown(
         '<div class="mem-page-title">แจ้งซ่อม / บำรุงรักษา</div>',
         unsafe_allow_html=True,
@@ -2021,6 +1691,7 @@ def page_maintenance():
         st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
         return
 
+    # ให้แน่ใจว่ามีคอลัมน์ที่ใช้กับแจ้งซ่อมครบ
     for col in [
         MAINT_REQUEST_DATE_COL,
         MAINT_EST_DAYS_COL,
@@ -2036,6 +1707,7 @@ def page_maintenance():
             else:
                 df[col] = ""
 
+    # เติมวันที่แจ้งซ่อมให้รายการที่สถานะ = "แจ้งซ่อมแล้ว - กำลังดำเนินการ" แต่ยังไม่มีวันที่
     df_filled, added_dates = ensure_request_dates(df)
     if added_dates > 0:
         save_equipment_data(df_filled)
@@ -2044,6 +1716,7 @@ def page_maintenance():
             f"ระบบได้เติมวันที่แจ้งซ่อม (วันนี้) ให้ {added_dates} รายการที่ยังไม่มีวันที่แจ้งซ่อมแล้ว"
         )
 
+    # เคลียร์รายการที่เกินกำหนด (ตามระยะเวลาซ่อมที่กำหนด, ถ้าไม่มีใช้ 7)
     df_after_expire, expired_count = expire_old_maintenance(df)
     if expired_count > 0:
         save_equipment_data(df_after_expire)
@@ -2057,6 +1730,7 @@ def page_maintenance():
         st.warning("ไม่พบคอลัมน์ 'สถานะแจ้งซ่อม' ในไฟล์ Excel")
         return
 
+    # ---------- การ์ดที่ 1: ภาพรวมสถานะแจ้งซ่อม ----------
     maint_counts = build_maintenance_summary(df)
 
     st.markdown(
@@ -2065,7 +1739,7 @@ def page_maintenance():
             <div class="mem-card-title">ภาพรวมสถานะแจ้งซ่อม</div>
             <div class="mem-card-subtitle">
                 แสดงจำนวนครุภัณฑ์ตามสถานะแจ้งซ่อม ดึงข้อมูลจากไฟล์ Excel เดียวกับหน้า QR
-                เมื่อมีการแจ้งซ่อมหรือเปลี่ยนสถานะจากหน้า QR / หน้า user ข้อมูลในหน้านี้จะอัปเดตอัตโนมัติ
+                เมื่อมีการแจ้งซ่อมหรือเปลี่ยนสถานะจากหน้า QR ข้อมูลในหน้านี้จะอัปเดตอัตโนมัติ
             </div>
         """,
         unsafe_allow_html=True,
@@ -2095,6 +1769,7 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ---------- การ์ดที่ 2: รายการแจ้งซ่อม + เวลาคงเหลือ ----------
     st.markdown(
         """
         <div class="mem-card">
@@ -2114,14 +1789,6 @@ def page_maintenance():
     if timers_df.empty:
         st.info("ยังไม่มีรายการแจ้งซ่อมที่อยู่ในสถานะ 'แจ้งซ่อมแล้ว - กำลังดำเนินการ' พร้อมข้อมูลวันที่แจ้งซ่อม")
     else:
-        # เพิ่ม flag "ใหม่วันนี้" สำหรับแจ้งซ่อมใหม่ (real-time indicator)
-        today_date = datetime.today().date()
-        new_mask = timers_df["วันที่แจ้งซ่อมล่าสุด"].astype("datetime64[ns]").dt.date == today_date
-        timers_df["ใหม่วันนี้"] = ["⭐" if x else "" for x in new_mask]
-        new_count = int(new_mask.sum())
-        if new_count > 0:
-            st.success(f"มีคำขอแจ้งซ่อมใหม่วันนี้ {new_count} รายการ (แสดงด้วยสัญลักษณ์ ⭐ ในตาราง)")
-
         display_cols = [c for c in timers_df.columns if c != "row_index"]
         st.dataframe(
             timers_df[display_cols],
@@ -2220,6 +1887,7 @@ def page_maintenance():
                 df_current.at[selected_idx, MAINT_EVAL_COL] = eval_select
                 df_current.at[selected_idx, MAINT_NOTE_COL] = note
 
+                # ถ้าประเมินว่า "ซ่อมไม่ได้" → เปลี่ยนสถานะเป็นปลดระวาง / รอจำหน่าย
                 if eval_select.startswith("ซ่อมไม่ได้"):
                     df_current.at[selected_idx, "สถานะแจ้งซ่อม"] = "ปลดระวาง / รอจำหน่าย"
 
@@ -2229,9 +1897,9 @@ def page_maintenance():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ====================================================================
+# =========================
 # helpers สำหรับ page_calibration
-# ====================================================================
+# =========================
 def _find_col_by_keywords(columns, keywords):
     for c in columns:
         text = str(c).lower()
@@ -2239,7 +1907,9 @@ def _find_col_by_keywords(columns, keywords):
             return c
     return None
 
+
 def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
+    """สร้าง HTML ปฏิทิน 1 เดือน พร้อม bubble จำนวนเครื่องมือในแต่ละวัน"""
     if due_series is None:
         due_series = pd.Series([], dtype="datetime64[ns]")
 
@@ -2248,16 +1918,18 @@ def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
     due_this = due_this[(due_this.dt.year == year) & (due_this.dt.month == month)]
     day_counts = due_this.dt.day.value_counts().to_dict()
 
-    cal = calendar.Calendar(firstweekday=0)
+    cal = calendar.Calendar(firstweekday=0)  # จันทร์เป็นวันแรก
     days_th = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"]
 
     html = ['<div class="cal-calendar-wrapper">']
+    # header
     html.append('<div class="cal-grid">')
     html.append('<div class="cal-grid-row cal-grid-header">')
     for d in days_th:
         html.append(f'<div class="cal-cell"><span class="cal-day-num">{d}</span></div>')
     html.append("</div>")
 
+    # weeks
     for week in cal.monthdayscalendar(year, month):
         html.append('<div class="cal-grid-row">')
         for day in week:
@@ -2280,6 +1952,7 @@ def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
     html.append("</div></div>")
     return "".join(html)
 
+
 def _get_month_mask(df: pd.DataFrame, month_cols: list[tuple[int, str]], target_month: int):
     col_name = None
     for m, col in month_cols:
@@ -2291,6 +1964,7 @@ def _get_month_mask(df: pd.DataFrame, month_cols: list[tuple[int, str]], target_
 
     series_m = df[col_name]
 
+    # ค่าที่ไม่ใช่ 0 / ไม่ว่าง / ไม่ None → ถือว่ามีแผนสอบเทียบ
     if pd.api.types.is_numeric_dtype(series_m):
         mask = series_m.fillna(0) > 0
     else:
@@ -2303,17 +1977,11 @@ def _get_month_mask(df: pd.DataFrame, month_cols: list[tuple[int, str]], target_
         )
     return mask
 
-# ====================================================================
-# หน้า "แผนสอบเทียบ" – admin เท่านั้น
-# ====================================================================
+# =========================
+# หน้า "แผนสอบเทียบ" – ปฏิทิน + การ์ด + เลือกเดือน
+# =========================
 def page_calibration():
     set_main_style()
-
-    role = st.session_state.get("role", "user")
-    if role != "admin":
-        st.warning("หน้านี้สำหรับผู้ดูแลระบบเท่านั้น")
-        return
-
     st.markdown(
         """
         <div style="margin-bottom: 0.2rem;">
@@ -2327,6 +1995,7 @@ def page_calibration():
         unsafe_allow_html=True,
     )
 
+    # ----------------- อัปโหลดไฟล์แผนสอบเทียบ -----------------
     with st.expander("📁 อัปโหลด / แทนที่ไฟล์แผนสอบเทียบ (.xlsx)", expanded=False):
         uploaded = st.file_uploader(
             "เลือกไฟล์ Excel ของแผนสอบเทียบ",
@@ -2353,6 +2022,7 @@ def page_calibration():
         else:
             st.caption("ยังไม่มีไฟล์แผนสอบเทียบในโฟลเดอร์ data")
 
+    # ----------------- โหลดข้อมูลแผนสอบเทียบ -----------------
     df = load_calibration_plan()
     if df.empty:
         st.info(
@@ -2361,6 +2031,7 @@ def page_calibration():
         )
         return
 
+    # ---- หาคอลัมน์กำหนดสอบเทียบ (Due M/D/Y) ----
     due_col = "Due M/D/Y"
     if due_col not in df.columns:
         for c in df.columns:
@@ -2378,6 +2049,7 @@ def page_calibration():
     today = pd.to_datetime(pd.Timestamp.today().normalize())
     df["days_left"] = (df[due_col] - today).dt.days
 
+    # ========= ตรวจคอลัมน์เดือน 1–12 =========
     month_cols: list[tuple[int, str]] = []
     for c in df.columns:
         s = str(c).strip()
@@ -2406,6 +2078,7 @@ def page_calibration():
     current_month = int(today.month)
     next_month = 1 if current_month == 12 else current_month + 1
 
+    # ========= ปฏิทิน 2 เดือน (เลือกเดือนได้) =========
     if month_cols:
         st.markdown(
             """
@@ -2473,6 +2146,7 @@ def page_calibration():
             "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
         )
 
+    # ========= รายการเครื่องมือในแผนสอบเทียบ (การ์ด + เลือกเดือน) =========
     st.markdown(
         """
         <div class="mem-card">
@@ -2505,6 +2179,7 @@ def page_calibration():
         df.columns, ["note"]
     )
 
+    # ตัวเลือกเดือนสำหรับการ์ด
     if month_cols:
         month_for_cards = st.selectbox(
             "เลือกเดือนสำหรับแสดงรายการ",
@@ -2521,6 +2196,7 @@ def page_calibration():
     if df_cards.empty:
         st.info("เดือนนี้ยังไม่มีเครื่องมือในแผนสอบเทียบ")
     else:
+        # แสดงการ์ดแบบ 2 คอลัมน์
         cols_cards = st.columns(2)
         for i, (_, r) in enumerate(df_cards.iterrows()):
             name = str(r.get(equip_col, "-")) if equip_col else "-"
@@ -2547,6 +2223,9 @@ def page_calibration():
             with cols_cards[i % 2]:
                 st.markdown(card_html, unsafe_allow_html=True)
 
+    # ===================================================================
+    # สถานะตาม Due M/D/Y (ใช้ทำสรุปตัวเลขด้านล่าง)
+    # ===================================================================
     def label_status(days):
         if pd.isna(days):
             return "ไม่มีข้อมูล"
@@ -2561,6 +2240,7 @@ def page_calibration():
 
     df["สถานะกำหนด"] = df["days_left"].apply(label_status)
 
+    # --- การ์ดสรุปสถิติ ---
     st.markdown(
         """
         <div class="mem-card">
@@ -2600,6 +2280,7 @@ def page_calibration():
     st.markdown(summary_html, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # --- ตารางแก้ไขได้ทั้งหมด ---
     st.markdown("### แผนสอบเทียบทั้งหมด (แก้ไขได้)")
     editable_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
     edited_df = st.data_editor(
@@ -2614,100 +2295,73 @@ def page_calibration():
         save_calibration_plan(edited_df)
         st.rerun()
 
-# ====================================================================
-# หน้า "รายงานสรุป" – admin
-# ====================================================================
+# =========================
+# หน้า "รายงานสรุป"
+# =========================
 def page_summary():
     set_main_style()
-    role = st.session_state.get("role", "user")
-    if role != "admin":
-        st.warning("หน้านี้สำหรับผู้ดูแลระบบเท่านั้น")
-        return
-
     st.markdown(
         '<div class="mem-page-title">รายงานสรุป</div>',
         unsafe_allow_html=True,
     )
     st.info("ส่วนนี้ใช้ทำรายงานสรุปครุภัณฑ์ / วิเคราะห์ข้อมูลเพิ่มเติมในอนาคต")
 
-# ====================================================================
+# =========================
+# Helpers สำหรับการจำสถานะล็อกอิน (กันหลุดตอนกด F5)
+# =========================
+def _get_query_params():
+    """รองรับทั้ง Streamlit เวอร์ชันใหม่ (st.query_params) และเก่า (experimental_get_query_params)."""
+    try:
+        # Streamlit เวอร์ชันใหม่
+        return st.query_params
+    except Exception:
+        # เวอร์ชันเก่า
+        try:
+            return st.experimental_get_query_params()
+        except Exception:
+            return {}
+
+def _set_query_params(**kwargs):
+    """ตั้งค่า query params ใน URL สำหรับจำ session แบบง่าย ๆ"""
+    try:
+        # เวอร์ชันใหม่: เคลียร์แล้วอัปเดต
+        st.query_params.clear()
+        st.query_params.update(kwargs)
+    except Exception:
+        # เวอร์ชันเก่า
+        st.experimental_set_query_params(**kwargs)
+
+def _clear_query_params():
+    """ลบ query params ออกจาก URL ตอน Logout"""
+    try:
+        st.query_params.clear()
+    except Exception:
+        try:
+            st.experimental_set_query_params()
+        except Exception:
+            pass
+
+# =========================
 # Main app (หลัง login)
-# ====================================================================
+# =========================
 def main_app():
     set_main_style()
-
-    username = st.session_state.get("username", "")
-    display_name = st.session_state.get("display_name", username or "ผู้ใช้")
-    role = st.session_state.get("role", "user")
-    role_label = "ผู้ดูแลระบบ" if role == "admin" else "ผู้ใช้ทั่วไป"
-
-    avatar_text = (display_name[:2] or "ME").upper()
 
     with st.sidebar:
         st.markdown(
             f"""
             <div class="mem-sidebar-user">
-              <div style="font-size:28px; font-weight:700; margin-bottom:4px;">{avatar_text}</div>
-              <div class="mem-sidebar-user-name">{display_name}</div>
-              <div class="mem-sidebar-user-sub">{role_label}</div>
+              <div style="font-size:28px; font-weight:700; margin-bottom:4px;">AD</div>
+              <div class="mem-sidebar-user-name">{st.session_state.get('display_name', 'admin')}</div>
+              <div class="mem-sidebar-user-sub">เข้าสู่ระบบสำเร็จ</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # Badge สถานะแจ้งซ่อมแบบ real-time สำหรับ admin
-        if role == "admin":
-            df_sidebar = load_equipment_data()
-            open_count = 0
-            new_today_count = 0
-            if not df_sidebar.empty and "สถานะแจ้งซ่อม" in df_sidebar.columns:
-                open_mask = (
-                    df_sidebar["สถานะแจ้งซ่อม"].astype(str)
-                    == "แจ้งซ่อมแล้ว - กำลังดำเนินการ"
-                )
-                open_count = int(open_mask.sum())
-                if MAINT_REQUEST_DATE_COL in df_sidebar.columns:
-                    dates = pd.to_datetime(
-                        df_sidebar.loc[open_mask, MAINT_REQUEST_DATE_COL],
-                        errors="coerce",
-                    )
-                    today = pd.to_datetime(pd.Timestamp.today().normalize()).date()
-                    new_today_count = int((dates.dt.date == today).sum())
-            st.markdown(
-                f"""
-                <div style="margin-top:8px;margin-bottom:12px;">
-                  <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">สถานะแจ้งซ่อม</div>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <div style="background:#111827;border-radius:999px;padding:3px 10px;font-size:11px;color:#F9FAFB;">
-                      เปิดอยู่: {open_count}
-                    </div>
-                    <div style="background:#F97316;border-radius:999px;padding:3px 10px;font-size:11px;color:#111827;">
-                      ใหม่วันนี้: {new_today_count}
-                    </div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
         st.markdown('<div class="mem-menu-title">เมนู</div>', unsafe_allow_html=True)
 
         current_menu = st.session_state.get("current_menu", "หน้าหลัก")
-
-        if role == "admin":
-            menu_labels = [
-                "หน้าหลัก",
-                "รายการครุภัณฑ์",
-                "แจ้งซ่อม / บำรุงรักษา",
-                "แผนสอบเทียบ",
-                "รายงานสรุป",
-            ]
-        else:
-            menu_labels = ["รายการครุภัณฑ์"]
-
-        if current_menu not in menu_labels:
-            current_menu = menu_labels[0]
-            st.session_state.current_menu = current_menu
 
         def menu_button(label: str):
             is_active = current_menu == label
@@ -2717,26 +2371,36 @@ def main_app():
             st.markdown("</div>", unsafe_allow_html=True)
             return clicked
 
-        for label in menu_labels:
-            if menu_button(label):
-                st.session_state.current_menu = label
-                st.rerun()
+        if menu_button("หน้าหลัก"):
+            st.session_state.current_menu = "หน้าหลัก"
+            st.rerun()
+        if menu_button("รายการครุภัณฑ์"):
+            st.session_state.current_menu = "รายการครุภัณฑ์"
+            st.rerun()
+        if menu_button("แจ้งซ่อม / บำรุงรักษา"):
+            st.session_state.current_menu = "แจ้งซ่อม / บำรุงรักษา"
+            st.rerun()
+        if menu_button("แผนสอบเทียบ"):
+            st.session_state.current_menu = "แผนสอบเทียบ"
+            st.rerun()
+        if menu_button("รายงานสรุป"):
+            st.session_state.current_menu = "รายงานสรุป"
+            st.rerun()
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            # ล้าง query params เพื่อให้ F5 แล้วไม่ restore login
-            try:
-                st.query_params.clear()
-            except Exception:
-                try:
-                    st.experimental_set_query_params()
-                except Exception:
-                    pass
-
+            # เคลียร์ค่าใน session_state
             keep_keys = []
             for k in list(st.session_state.keys()):
                 if k not in keep_keys:
                     del st.session_state[k]
+
+            # ลบ query params ออกจาก URL เพื่อไม่ให้ auto login อีก
+            try:
+                _clear_query_params()
+            except Exception:
+                pass
+
             st.session_state.logged_in = False
             st.session_state.view = "landing"
             st.rerun()
@@ -2754,89 +2418,60 @@ def main_app():
     elif menu == "รายงานสรุป":
         page_summary()
 
-# ====================================================================
+# =========================
 # ENTRY POINT
-# ====================================================================
+# =========================
+# ดึง query params จาก URL (ถ้ามี) เพื่อใช้ช่วยจำสถานะล็อกอินตอนกด F5 / รีเฟรช
+try:
+    _params = _get_query_params()
+except Exception:
+    _params = {}
+
+# ถ้าเพิ่งเริ่ม session (ยังไม่มี logged_in ใน st.session_state)
+# และ URL มี auto_login=1 + user=xxxx ให้ถือว่า "ยังล็อกอินอยู่"
 if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+    user_from_url = None
+    auto_login_flag = None
+    try:
+        raw_user = _params.get("user") if _params else None
+        raw_auto = _params.get("auto_login") if _params else None
+
+        if isinstance(raw_user, (list, tuple)):
+            user_from_url = raw_user[0]
+        else:
+            user_from_url = raw_user
+
+        if isinstance(raw_auto, (list, tuple)):
+            auto_login_flag = raw_auto[0]
+        else:
+            auto_login_flag = raw_auto
+    except Exception:
+        user_from_url = None
+        auto_login_flag = None
+
+    if user_from_url and str(auto_login_flag) == "1":
+        # auto login จาก URL
+        st.session_state.logged_in = True
+        st.session_state.username = user_from_url
+        if "display_name" not in st.session_state:
+            st.session_state.display_name = user_from_url
+        st.session_state.view = "app"
+    else:
+        st.session_state.logged_in = False
+
+# ค่าเริ่มต้นอื่น ๆ
 if "view" not in st.session_state:
     st.session_state.view = "landing"
 if "current_menu" not in st.session_state:
     st.session_state.current_menu = "หน้าหลัก"
 if "selected_row_idx" not in st.session_state:
     st.session_state.selected_row_idx = 0
-if "qr_code_from_url" not in st.session_state:
-    st.session_state.qr_code_from_url = None
-if "qr_code_pending" not in st.session_state:
-    st.session_state.qr_code_pending = None
-if "_url_params" not in st.session_state:
-    st.session_state._url_params = {}
 
-# ---- อ่าน query parameter หนึ่งครั้ง (ใช้ทั้งกัน F5 + QR) ----
-try:
-    params = st.query_params
-except Exception:
-    try:
-        params = st.experimental_get_query_params()
-    except Exception:
-        params = {}
-
-st.session_state._url_params = params
-
-username_from_url = None
-if isinstance(params, dict) and "user" in params:
-    v = params["user"]
-    if isinstance(v, list):
-        username_from_url = v[0]
-    else:
-        username_from_url = v
-
-code_from_url = None
-if isinstance(params, dict) and "code" in params:
-    cv = params["code"]
-    if isinstance(cv, list):
-        code_from_url = cv[0]
-    else:
-        code_from_url = cv
-
-if code_from_url:
-    st.session_state.qr_code_from_url = str(code_from_url)
-
-# ---- Restore login จาก query parameter (กัน F5 หลุด) ----
-if not st.session_state.logged_in and username_from_url:
-    display_name = get_user_display_name(username_from_url)
-    if display_name:
-        st.session_state.logged_in = True
-        st.session_state.username = username_from_url
-        st.session_state.display_name = display_name
-        role = get_user_role(username_from_url) or "user"
-        st.session_state.role = role
-        if "current_menu" not in st.session_state or st.session_state.get("current_menu") is None:
-            st.session_state.current_menu = (
-                "หน้าหลัก" if role == "admin" else "รายการครุภัณฑ์"
-            )
-        # ถ้ามี code อยู่ใน URL ให้ไปหน้ารายการครุภัณฑ์โดยตรง
-        if st.session_state.get("qr_code_from_url"):
-            st.session_state.current_menu = "รายการครุภัณฑ์"
-        st.session_state.view = "app"
-
-# ---- ถ้ายังไม่ล็อกอิน และมี code ใน URL และยังไม่ได้กดไปหน้า login/register → โชว์หน้า QR public ----
-if (
-    not st.session_state.logged_in
-    and code_from_url
-    and st.session_state.view not in ("login", "register")
-):
-    st.session_state.view = "qr_public"
-
-# ---- routing หลัก ----
+# เรียกหน้าตามสถานะล็อกอิน
 if st.session_state.logged_in:
     main_app()
 else:
     if st.session_state.view == "login":
         login_page()
-    elif st.session_state.view == "register":
-        register_page()
-    elif st.session_state.view == "qr_public":
-        qr_public_page()
     else:
         landing_page()
