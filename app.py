@@ -1231,7 +1231,10 @@ def login_page():
 
             st.session_state.view = "app"
 
-            # ฝัง username + (ถ้ามี) code ไว้ใน query param เพื่อกัน F5 หลุด
+            # 🔒===============================
+            #  ส่วนสำคัญกัน F5 เด้งออก
+            #  เซ็ต query params: user (+ code ถ้ามีจาก QR)
+            # ===============================#
             try:
                 qp = {"user": username}
                 code_for_url = st.session_state.get("qr_code_from_url")
@@ -1249,6 +1252,7 @@ def login_page():
                         st.experimental_set_query_params(user=username)
                 except Exception:
                     pass
+            # ================================
 
             # เคลียร์ pending
             st.session_state.qr_code_pending = None
@@ -1338,7 +1342,7 @@ def page_home():
 
     df = load_equipment_data()
     if df.empty:
-        st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่เลือกอยู่")
+        st.info("ยังไม่มีข้อมูลครุภัณฑ์ในไฟล์ Excel ที่ใช้งานอยู่")
         return
 
     status_col = "สถานะ"
@@ -2724,7 +2728,10 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            # ล้าง query params เพื่อให้ F5 แล้วไม่ restore login
+            # 🔒===============================
+            #  ตอน logout เคลียร์ query params
+            #  เพื่อไม่ให้ F5 แล้ว restore login
+            # ===============================#
             try:
                 st.query_params.clear()
             except Exception:
@@ -2732,6 +2739,7 @@ def main_app():
                     st.experimental_set_query_params()
                 except Exception:
                     pass
+            # ================================
 
             keep_keys = []
             for k in list(st.session_state.keys()):
@@ -2802,7 +2810,10 @@ if isinstance(params, dict) and "code" in params:
 if code_from_url:
     st.session_state.qr_code_from_url = str(code_from_url)
 
-# ---- Restore login จาก query parameter (กัน F5 หลุด) ----
+# 🔒========================================================
+#  Restore login จาก query parameter (กัน F5 / Refresh หลุด)
+#  ถ้ามี ?user=xxx อยู่ใน URL → ดึงข้อมูล user จาก auth แล้วเซ็ต session_state
+# ========================================================#
 if not st.session_state.logged_in and username_from_url:
     display_name = get_user_display_name(username_from_url)
     if display_name:
@@ -2819,6 +2830,7 @@ if not st.session_state.logged_in and username_from_url:
         if st.session_state.get("qr_code_from_url"):
             st.session_state.current_menu = "รายการครุภัณฑ์"
         st.session_state.view = "app"
+# ========================================================#
 
 # ---- ถ้ายังไม่ล็อกอิน และมี code ใน URL และยังไม่ได้กดไปหน้า login/register → โชว์หน้า QR public ----
 if (
