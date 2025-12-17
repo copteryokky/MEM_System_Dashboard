@@ -1231,7 +1231,7 @@ def login_page():
 
             st.session_state.view = "app"
 
-            # 🧠 กัน F5 หลุด: ฝัง username + (ถ้ามี) code ไว้ใน query param
+            # ฝัง username + (ถ้ามี) code ไว้ใน query param เพื่อกัน F5 หลุด
             try:
                 qp = {"user": username}
                 code_for_url = st.session_state.get("qr_code_from_url")
@@ -2724,7 +2724,7 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            # ❌ ล้าง query params เพื่อให้ F5 แล้วไม่ restore login
+            # ล้าง query params เพื่อให้ F5 แล้วไม่ restore login
             try:
                 st.query_params.clear()
             except Exception:
