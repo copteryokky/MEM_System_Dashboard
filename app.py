@@ -275,8 +275,7 @@ def set_login_style():
             background: #000000;
         }
         </style>
-        """
-        ,
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1231,8 +1230,23 @@ def login_page():
 
             st.session_state.view = "app"
 
-            # ❌ ไม่ใส่ user ลงใน URL อีกต่อไป เพื่อกันไม่ให้ก็อปลิงก์ ?user=... ไปเปิดจากเครื่องอื่นแล้วเข้าได้เลย
-            # F5 / Refresh จะยังคงล็อกอินค้างไว้ใน session เดิมของ Streamlit ตามปกติ
+            # 🔒===============================
+            #  F5 persistence: ใส่ user (+code ถ้ามี) ลง URL เสมอ
+            #  ใช้ experimental_set_query_params อย่างเดียวให้ชัวร์
+            # ===============================#
+            try:
+                code_for_url = st.session_state.get("qr_code_from_url")
+                if code_for_url:
+                    st.experimental_set_query_params(
+                        user=username,
+                        code=str(code_for_url),
+                    )
+                else:
+                    st.experimental_set_query_params(user=username)
+            except Exception:
+                # ถ้าเซ็ตไม่ได้ ก็ยังใช้ session เดิมได้ แต่ F5 จะไม่ช่วย
+                pass
+            # ===============================#
 
             st.session_state.qr_code_pending = None
             st.rerun()
@@ -2706,11 +2720,15 @@ def main_app():
 
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
-            # ตอน logout เคลียร์ query params (เช่น code) ออกให้หมด
+            # 🔒===============================
+            #  ตอน logout เคลียร์ query params เสมอ
+            #  เพื่อไม่ให้ F5 แล้ว restore login
+            # ===============================#
             try:
                 st.experimental_set_query_params()
             except Exception:
                 pass
+            # ================================
 
             keep_keys = []
             for k in list(st.session_state.keys()):
@@ -2734,7 +2752,7 @@ def main_app():
         page_summary()
 
 # ====================================================================
-# ENTRY POINT + F5 / QR restore (แต่ไม่ใช้ user ใน URL แล้ว)
+# ENTRY POINT + F5 / QR restore login
 # ====================================================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -2751,13 +2769,21 @@ if "qr_code_pending" not in st.session_state:
 if "_url_params" not in st.session_state:
     st.session_state._url_params = {}
 
-# ---- อ่าน query parameter หนึ่งครั้ง (ใช้เฉพาะ code จาก QR) ----
+# ---- อ่าน query parameter หนึ่งครั้ง (ใช้ทั้งกัน F5 + QR) ----
 try:
     params = st.experimental_get_query_params()
 except Exception:
     params = {}
 
 st.session_state._url_params = params
+
+username_from_url = None
+if isinstance(params, dict) and "user" in params:
+    v = params["user"]
+    if isinstance(v, list):
+        username_from_url = v[0]
+    else:
+        username_from_url = v
 
 code_from_url = None
 if isinstance(params, dict) and "code" in params:
@@ -2770,7 +2796,29 @@ if isinstance(params, dict) and "code" in params:
 if code_from_url:
     st.session_state.qr_code_from_url = str(code_from_url)
 
-# ถ้ายังไม่ล็อกอิน และมี code ใน URL → แสดงหน้า QR public (อ่านอย่างเดียว)
+# 🔒========================================================
+#  Restore login จาก query parameter (กัน F5 / Refresh หลุด)
+#  ถ้ามี ?user=xxx อยู่ใน URL → ดึงข้อมูล user จาก auth แล้วเซ็ต session_state
+# ========================================================#
+if not st.session_state.logged_in and username_from_url:
+    display_name = get_user_display_name(username_from_url)
+    if display_name:
+        st.session_state.logged_in = True
+        st.session_state.username = username_from_url
+        st.session_state.display_name = display_name
+        role = get_user_role(username_from_url) or "user"
+        st.session_state.role = role
+        if "current_menu" not in st.session_state or st.session_state.get("current_menu") is None:
+            st.session_state.current_menu = (
+                "หน้าหลัก" if role == "admin" else "รายการครุภัณฑ์"
+            )
+        # ถ้ามี code อยู่ใน URL ให้ไปหน้ารายการครุภัณฑ์โดยตรง
+        if st.session_state.get("qr_code_from_url"):
+            st.session_state.current_menu = "รายการครุภัณฑ์"
+        st.session_state.view = "app"
+# ========================================================#
+
+# ---- ถ้ายังไม่ล็อกอิน และมี code ใน URL และยังไม่ได้กดไปหน้า login/register → โชว์หน้า QR public ----
 if (
     not st.session_state.logged_in
     and code_from_url
