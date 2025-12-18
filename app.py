@@ -1221,7 +1221,6 @@ def login_page():
             if pending_code:
                 st.session_state.qr_code_from_url = str(pending_code)
 
-            # ตั้งเมนูเริ่มต้น
             if st.session_state.get("qr_code_from_url"):
                 st.session_state.current_menu = "รายการครุภัณฑ์"
             else:
@@ -1232,31 +1231,24 @@ def login_page():
             st.session_state.view = "app"
 
             # 🔒===============================
-            #  ส่วนสำคัญกัน F5 เด้งออก
-            #  เซ็ต query params: user (+ code ถ้ามีจาก QR)
+            #  F5 persistence: ใส่ user (+code ถ้ามี) ลง URL เสมอ
+            #  ใช้ experimental_set_query_params อย่างเดียวให้ชัวร์
             # ===============================#
             try:
-                qp = {"user": username}
                 code_for_url = st.session_state.get("qr_code_from_url")
                 if code_for_url:
-                    qp["code"] = str(code_for_url)
-                st.query_params.update(qp)
+                    st.experimental_set_query_params(
+                        user=username,
+                        code=str(code_for_url),
+                    )
+                else:
+                    st.experimental_set_query_params(user=username)
             except Exception:
-                try:
-                    code_for_url = st.session_state.get("qr_code_from_url")
-                    if code_for_url:
-                        st.experimental_set_query_params(
-                            user=username, code=str(code_for_url)
-                        )
-                    else:
-                        st.experimental_set_query_params(user=username)
-                except Exception:
-                    pass
-            # ================================
+                # ถ้าเซ็ตไม่ได้ ก็ยังใช้ session เดิมได้ แต่ F5 จะไม่ช่วย
+                pass
+            # ===============================#
 
-            # เคลียร์ pending
             st.session_state.qr_code_pending = None
-
             st.rerun()
         else:
             st.error("ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง")
@@ -2729,16 +2721,13 @@ def main_app():
         st.write("")
         if st.button("Logout", type="primary", use_container_width=True):
             # 🔒===============================
-            #  ตอน logout เคลียร์ query params
+            #  ตอน logout เคลียร์ query params เสมอ
             #  เพื่อไม่ให้ F5 แล้ว restore login
             # ===============================#
             try:
-                st.query_params.clear()
+                st.experimental_set_query_params()
             except Exception:
-                try:
-                    st.experimental_set_query_params()
-                except Exception:
-                    pass
+                pass
             # ================================
 
             keep_keys = []
@@ -2782,12 +2771,9 @@ if "_url_params" not in st.session_state:
 
 # ---- อ่าน query parameter หนึ่งครั้ง (ใช้ทั้งกัน F5 + QR) ----
 try:
-    params = st.query_params
+    params = st.experimental_get_query_params()
 except Exception:
-    try:
-        params = st.experimental_get_query_params()
-    except Exception:
-        params = {}
+    params = {}
 
 st.session_state._url_params = params
 
