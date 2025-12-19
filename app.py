@@ -2412,8 +2412,7 @@ def page_calibration():
                 st.error("ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบรูปแบบไฟล์อีกครั้ง")
             else:
                 save_calibration_plan(df_new)
-                st.info("ระบบจะใช้ไฟล์ใหม่นี้สำหรับแผนสอบเทียบท
-อดไป")
+                st.info("ระบบจะใช้ไฟล์ใหม่นี้สำหรับแผนสอบเทียบทอดไป")
                 st.rerun()
 
         cal_file_in_use: Path | None = None
