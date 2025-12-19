@@ -49,6 +49,7 @@ MAINT_EST_DAYS_COL = "ระยะเวลาซ่อมที่กำหน�
 MAINT_DUE_DATE_COL = "กำหนดซ่อมเสร็จภายใน"
 MAINT_EVAL_COL = "ผลการประเมินการซ่อม"
 MAINT_NOTE_COL = "หมายเหตุการซ่อม"
+MAINT_IMAGE_COL = "รูปภาพประกอบการแจ้งซ่อม"  # ✅ เพิ่มคอลัมน์เก็บรูปจากผู้ใช้
 
 MAINT_EVAL_CHOICES = [
     "ยังไม่ประเมิน",
@@ -670,6 +671,8 @@ def load_equipment_data() -> pd.DataFrame:
             df[MAINT_EVAL_COL] = MAINT_EVAL_CHOICES[0]
         if MAINT_NOTE_COL not in df.columns:
             df[MAINT_NOTE_COL] = ""
+        if MAINT_IMAGE_COL not in df.columns:  # ✅ สร้างคอลัมน์รูปภาพแจ้งซ่อมถ้ายังไม่มี
+            df[MAINT_IMAGE_COL] = ""
 
         return df
     except Exception as e:
@@ -809,6 +812,8 @@ def expire_old_maintenance(df: pd.DataFrame, default_limit: int = 7):
         df_new.loc[mask_expire, MAINT_EVAL_COL] = MAINT_EVAL_CHOICES[0]
     if MAINT_NOTE_COL in df_new.columns:
         df_new.loc[mask_expire, MAINT_NOTE_COL] = ""
+    if MAINT_IMAGE_COL in df_new.columns:
+        df_new.loc[mask_expire, MAINT_IMAGE_COL] = ""
 
     return df_new, expired_count
 
@@ -950,6 +955,26 @@ def save_uploaded_image(uploaded, asset_code: str) -> str:
     suffix = Path(uploaded.name).suffix or ".png"
     safe_code = asset_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
     filename = f"{safe_code}{suffix}"
+    target_path = IMAGE_DIR / filename
+    with open(target_path, "wb") as f:
+        f.write(uploaded.getbuffer())
+    return filename
+
+def get_maint_image_path_from_row(row: pd.Series) -> Path | None:
+    """คืน path ของรูปภาพประกอบการแจ้งซ่อมจากข้อมูลในแถว (ถ้ามี)"""
+    val = str(row.get(MAINT_IMAGE_COL, "") or "").strip()
+    if not val:
+        return None
+    p = Path(val)
+    if not p.is_absolute():
+        p = IMAGE_DIR / p.name
+    return p
+
+def save_maint_image(uploaded, asset_code: str) -> str:
+    """บันทึกรูปภาพที่ผู้ใช้แนบตอนแจ้งซ่อม"""
+    suffix = Path(uploaded.name).suffix or ".png"
+    safe_code = asset_code.replace("/", "_").replace("\\", "_").replace(" ", "_")
+    filename = f"{safe_code}_maint_{datetime.now().strftime('%Y%m%d_%H%M%S')}{suffix}"
     target_path = IMAGE_DIR / filename
     with open(target_path, "wb") as f:
         f.write(uploaded.getbuffer())
@@ -1124,6 +1149,7 @@ def qr_public_page():
             MAINT_DUE_DATE_COL,
             MAINT_EVAL_COL,
             MAINT_NOTE_COL,
+            MAINT_IMAGE_COL,
         )
     ]
     half = (len(columns_list) + 1) // 2
@@ -1750,6 +1776,7 @@ def page_equipment_list():
                 MAINT_DUE_DATE_COL,
                 MAINT_EVAL_COL,
                 MAINT_NOTE_COL,
+                MAINT_IMAGE_COL,
             )
         ]
 
@@ -1932,6 +1959,7 @@ def page_equipment_list():
                 MAINT_DUE_DATE_COL,
                 MAINT_EVAL_COL,
                 MAINT_NOTE_COL,
+                MAINT_IMAGE_COL,
             )
         ]
         half = (len(columns_list) + 1) // 2
@@ -1975,6 +2003,33 @@ def page_equipment_list():
             key=f"maint_note_user_{selected_idx}",
         )
 
+        # ✅ ส่วนอัปโหลดรูปภาพประกอบการแจ้งซ่อม
+        st.markdown("#### รูปภาพประกอบการแจ้งซ่อม (ถ้ามี)")
+
+        current_maint_image_path = None
+        if MAINT_IMAGE_COL in df.columns:
+            current_maint_image_path = get_maint_image_path_from_row(row)
+
+        if current_maint_image_path and current_maint_image_path.exists():
+            st.image(
+                str(current_maint_image_path),
+                caption="รูปภาพประกอบการแจ้งซ่อมล่าสุด",
+                use_column_width=True,
+            )
+
+        uploaded_maint_img = st.file_uploader(
+            "อัปโหลดรูปภาพประกอบการแจ้งซ่อม (เช่น รูปตำแหน่งที่เสีย, หน้าจอ error)",
+            type=["png", "jpg", "jpeg"],
+            key=f"maint_img_user_{selected_idx}",
+        )
+
+        if uploaded_maint_img is not None:
+            st.image(
+                uploaded_maint_img,
+                caption="ตัวอย่างรูปที่จะส่งไปกับคำขอแจ้งซ่อม",
+                use_column_width=True,
+            )
+
         if st.button("📩 ส่งคำขอแจ้งซ่อม / บันทึกหมายเหตุ", use_container_width=True):
             df_current = load_equipment_data()
             if selected_idx not in df_current.index:
@@ -1992,8 +2047,17 @@ def page_equipment_list():
                     ):
                         df_current.at[selected_idx, MAINT_EST_DAYS_COL] = 7
 
+                # ✅ บันทึกไฟล์รูปภาพประกอบการแจ้งซ่อม (ถ้ามี)
+                if uploaded_maint_img is not None:
+                    filename = save_maint_image(uploaded_maint_img, asset_code)
+                    if MAINT_IMAGE_COL not in df_current.columns:
+                        df_current[MAINT_IMAGE_COL] = ""
+                    df_current.at[selected_idx, MAINT_IMAGE_COL] = filename
+
                 save_equipment_data(df_current)
-                st.success("บันทึกคำขอแจ้งซ่อมและหมายเหตุเรียบร้อยแล้ว ระบบอัปเดตแบบ Real-time")
+                st.success(
+                    "บันทึกคำขอแจ้งซ่อมและหมายเหตุเรียบร้อยแล้ว พร้อมรูปภาพประกอบ (ถ้ามี) ระบบอัปเดตแบบ Real-time"
+                )
                 st.rerun()
 
 # ====================================================================
@@ -2023,6 +2087,7 @@ def page_maintenance():
         MAINT_DUE_DATE_COL,
         MAINT_EVAL_COL,
         MAINT_NOTE_COL,
+        MAINT_IMAGE_COL,  # ✅ ensure คอลัมน์รูปภาพแจ้งซ่อม
     ]:
         if col not in df.columns:
             if col == MAINT_EST_DAYS_COL:
@@ -2160,6 +2225,18 @@ def page_maintenance():
         st.write(f"**รหัสครุภัณฑ์:** {row_sel.get(ASSET_CODE_COL, '-')}")
         st.write(f"**ชื่อครุภัณฑ์:** {row_sel.get('ชื่อ', '-')}")
         st.write(f"**วันที่แจ้งซ่อมล่าสุด:** {row_sel.get(MAINT_REQUEST_DATE_COL, '-')}")
+
+        # ✅ แสดงรูปภาพประกอบการแจ้งซ่อมจากผู้ใช้ ถ้ามี
+        st.markdown("#### รูปภาพประกอบการแจ้งซ่อมจากผู้ใช้")
+        maint_img_path = get_maint_image_path_from_row(row_sel)
+        if maint_img_path and maint_img_path.exists():
+            st.image(
+                str(maint_img_path),
+                caption="รูปภาพประกอบการแจ้งซ่อมล่าสุดจากผู้ใช้",
+                use_column_width=True,
+            )
+        else:
+            st.caption("ยังไม่มีรูปภาพประกอบการแจ้งซ่อมสำหรับรายการนี้")
 
         raw_est = row_sel.get(MAINT_EST_DAYS_COL, "")
         try:
@@ -2335,7 +2412,8 @@ def page_calibration():
                 st.error("ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบรูปแบบไฟล์อีกครั้ง")
             else:
                 save_calibration_plan(df_new)
-                st.info("ระบบจะใช้ไฟล์ใหม่นี้สำหรับแผนสอบเทียบต่อไป")
+                st.info("ระบบจะใช้ไฟล์ใหม่นี้สำหรับแผนสอบเทียบท
+อดไป")
                 st.rerun()
 
         cal_file_in_use: Path | None = None
