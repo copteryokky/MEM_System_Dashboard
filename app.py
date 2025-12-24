@@ -568,6 +568,57 @@ def set_main_style():
             color:#FFFFFF;
         }
 
+
+        .cal-event-dot{
+            position:absolute;
+            top:5px;
+            left:5px;
+            width:8px;
+            height:8px;
+            border-radius:999px;
+            background:#F97316;
+            box-shadow:0 0 0 2px rgba(249,115,22,0.22);
+        }
+        .cal-legend{
+            display:flex;
+            flex-wrap:wrap;
+            gap:8px;
+            font-size:11px;
+            margin-top:10px;
+            margin-bottom:6px;
+        }
+        .cal-legend-item{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            padding:4px 10px;
+            border-radius:999px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            color:#4b5563;
+        }
+        .cal-legend-dot{
+            width:10px;
+            height:10px;
+            border-radius:999px;
+            background:#F97316;
+            box-shadow:0 0 0 2px rgba(249,115,22,0.18);
+        }
+        .cal-legend-badge{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-width:18px;
+            height:16px;
+            padding:0 6px;
+            border-radius:999px;
+            background:#1D4ED8;
+            color:#fff;
+            font-size:10px;
+            font-weight:700;
+        }
+
+
         .cal-equip-container{
             margin-top:12px;
         }
@@ -2313,6 +2364,11 @@ def _find_col_by_keywords(columns, keywords):
     return None
 
 def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
+    """Return HTML calendar for (year, month).
+
+    - Highlights days that have calibration schedules (based on Due Date)
+    - Shows an orange dot + blue badge (count) on days with schedules
+    """
     if due_series is None:
         due_series = pd.Series([], dtype="datetime64[ns]")
 
@@ -2321,33 +2377,42 @@ def _build_calendar_html(year: int, month: int, due_series: pd.Series) -> str:
     due_this = due_this[(due_this.dt.year == year) & (due_this.dt.month == month)]
     day_counts = due_this.dt.day.value_counts().to_dict()
 
-    cal = calendar.Calendar(firstweekday=0)
+    cal = calendar.Calendar(firstweekday=0)  # Monday
     days_th = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"]
 
     html = ['<div class="cal-calendar-wrapper">']
     html.append('<div class="cal-grid">')
+
+    # Header
     html.append('<div class="cal-grid-row cal-grid-header">')
     for d in days_th:
-        html.append(f'<div class="cal-cell"><span class="cal-day-num">{d}</span></div>')
+        html.append(f'<div class="cal-header-cell">{d}</div>')
     html.append("</div>")
 
+    # Weeks
     for week in cal.monthdayscalendar(year, month):
         html.append('<div class="cal-grid-row">')
         for day in week:
             if day == 0:
-                html.append('<div class="cal-cell">&nbsp;</div>')
-            else:
-                count = int(day_counts.get(day, 0))
-                classes = "cal-cell"
-                if count > 0:
-                    classes += " has-event"
-                html.append(f'<div class="{classes}">')
-                html.append(f'<span class="cal-day-num">{day}</span>')
-                if count > 0:
-                    html.append(
-                        f'<span class="cal-event-badge">{count} รายการ</span>'
-                    )
-                html.append("</div>")
+                html.append('<div class="cal-cell empty"></div>')
+                continue
+
+            count = int(day_counts.get(day, 0))
+            classes = "cal-cell"
+            title = ""
+            if count > 0:
+                classes += " has-event"
+                title = f' title="มีแผนสอบเทียบ {count} รายการ"'
+
+            html.append(f'<div class="{classes}"{title}>')
+            html.append(f'<span class="cal-day-num">{day}</span>')
+
+            if count > 0:
+                # visual marker: dot + count badge
+                html.append('<span class="cal-event-dot" aria-hidden="true"></span>')
+                html.append(f'<span class="cal-event-badge">{count} รายการ</span>')
+
+            html.append("</div>")
         html.append("</div>")
 
     html.append("</div></div>")
@@ -2426,7 +2491,8 @@ def page_calibration():
         else:
             st.caption("ยังไม่มีไฟล์แผนสอบเทียบในโฟลเดอร์ data")
 
-    df = load_calibration_plan()
+    df_raw = load_calibration_plan()
+    df = df_raw.copy()
     if df.empty:
         st.info(
             "ยังไม่มีข้อมูลแผนสอบเทียบ ให้คัดลอกไฟล์ 'แผนสอบเทียบและบำรุงรักษาเครื่องมือ.xlsx' "
@@ -2475,50 +2541,66 @@ def page_calibration():
         12: "ธ.ค.",
     }
 
-    base_year = today.year
-    current_month = int(today.month)
-    next_month = 1 if current_month == 12 else current_month + 1
+        # -------------------------
+    # Dual-month calendar (Left = current month, Right = next month)
+    # - Left month is always the current month (based on today)
+    # - Right month is always the next month (handle year transition)
+    # -------------------------
+    left_year = today.year
+    left_month = int(today.month)
+    right_month = 1 if left_month == 12 else left_month + 1
+    right_year = left_year + 1 if left_month == 12 else left_year
 
     if month_cols:
         st.markdown(
             """
             <div class="mem-card">
-                <div class="mem-card-title">ปฏิทินแผนสอบเทียบ</div>
+                <div class="mem-card-title">ปฏิทินแผนสอบเทียบ (2 เดือน)</div>
                 <div class="mem-card-subtitle">
-                    ใช้ข้อมูลจาก Due Date และตารางทวนสอบ (คอลัมน์เดือน 1–12) แสดงจำนวนเครื่องมือที่ต้องสอบเทียบในแต่ละวัน
-                    สามารถเลือกเดือนที่ต้องการดูได้
+                    แสดง 2 เดือนแบบเคียงข้างกันเสมอ: <b>ซ้าย = เดือนปัจจุบัน</b>, <b>ขวา = เดือนถัดไป</b>
+                    (รองรับการข้ามปี เช่น ธ.ค. → ม.ค. ปีถัดไป) โดยอิงจาก <b>Due Date</b> ของแต่ละรายการ
                 </div>
             """,
             unsafe_allow_html=True,
         )
 
+        # (Keep the month selectors in the layout, but lock them to Current/Next month)
         col_sel1, col_sel2 = st.columns(2)
-        month_options = list(range(1, 13))
-
         with col_sel1:
-            m1 = st.selectbox(
-                "เดือนฝั่งซ้าย",
-                options=month_options,
-                index=current_month - 1,
-                format_func=lambda m: f"{THAI_MONTH_SHORT[m]} {base_year+543}",
-                key="cal_month_left",
+            st.selectbox(
+                "เดือนฝั่งซ้าย (เดือนปัจจุบัน)",
+                options=[left_month],
+                index=0,
+                format_func=lambda m: f"{THAI_MONTH_SHORT[m]} {left_year+543}",
+                key="cal_month_left_locked",
+                disabled=True,
             )
         with col_sel2:
-            m2_default_index = next_month - 1
-            m2 = st.selectbox(
-                "เดือนฝั่งขวา",
-                options=month_options,
-                index=m2_default_index,
-                format_func=lambda m: f"{THAI_MONTH_SHORT[m]} {base_year+543}",
-                key="cal_month_right",
+            st.selectbox(
+                "เดือนฝั่งขวา (เดือนถัดไป)",
+                options=[right_month],
+                index=0,
+                format_func=lambda m: f"{THAI_MONTH_SHORT[m]} {right_year+543}",
+                key="cal_month_right_locked",
+                disabled=True,
             )
+
+        st.markdown(
+            """
+            <div class="cal-legend">
+              <div class="cal-legend-item"><span class="cal-legend-dot"></span> มีแผนสอบเทียบในวันนั้น</div>
+              <div class="cal-legend-item"><span class="cal-legend-badge">n</span> จำนวนรายการสอบเทียบ (n รายการ)</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         col_cal1, col_cal2 = st.columns(2)
 
-        def render_calendar(container, month_val: int):
+        def render_calendar(container, year_val: int, month_val: int):
             month_label = THAI_MONTH_SHORT.get(month_val, str(month_val))
             html_calendar = _build_calendar_html(
-                base_year,
+                year_val,
                 month_val,
                 df[due_col] if due_col is not None else None,
             )
@@ -2526,9 +2608,9 @@ def page_calibration():
                 st.markdown(
                     f"""
                     <div class="mem-cal-column">
-                        <div class="mem-cal-column-title">เดือน {month_label} {base_year+543}</div>
+                        <div class="mem-cal-column-title">เดือน {month_label} {year_val+543}</div>
                         <div class="mem-cal-column-sub">
-                            ใช้จำนวนรายการที่มี Due Date อยู่ในเดือนนี้ เพื่อดูวันที่มีการสอบเทียบจำนวนมาก
+                            จุดสีส้ม + ป้ายจำนวนรายการ แสดงวันที่มี Due Date ในเดือนนี้
                         </div>
                         {html_calendar}
                     </div>
@@ -2536,11 +2618,12 @@ def page_calibration():
                     unsafe_allow_html=True,
                 )
 
-        render_calendar(col_cal1, m1)
-        render_calendar(col_cal2, m2)
+        render_calendar(col_cal1, left_year, left_month)
+        render_calendar(col_cal2, right_year, right_month)
 
         st.markdown("</div>", unsafe_allow_html=True)
     else:
+
         st.info(
             "ไฟล์แผนสอบเทียบนี้ยังไม่มีคอลัมน์เดือน (1–12) สำหรับใช้ทำปฏิทิน "
             "หากต้องการใช้ฟังก์ชันนี้ให้เพิ่มตารางทวนสอบที่มีคอลัมน์เลขเดือนก่อน"
@@ -2673,19 +2756,187 @@ def page_calibration():
     st.markdown(summary_html, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### แผนสอบเทียบทั้งหมด (แก้ไขได้)")
-    editable_cols = [c for c in df.columns if c not in ("days_left", "สถานะกำหนด")]
-    edited_df = st.data_editor(
-        df[editable_cols],
-        key="cal_plan_editor",
-        num_rows="dynamic",
+    st.markdown("### แผนสอบเทียบทั้งหมด (เลือกแถวเพื่อแก้ไขด้านล่าง)")
+
+    # --- 3.1 Row selection (click/select) ---
+    # ใช้ checkbox คอลัมน์ "เลือก" เพื่อเลือกแถว (รองรับ single selection)
+    df_select_view = df.copy()
+    df_select_view.insert(0, "เลือก", False)
+
+    selected_rowid = st.session_state.get("cal_selected_rowid", None)
+    if selected_rowid is not None and selected_rowid in df_select_view.index:
+        df_select_view.loc[selected_rowid, "เลือก"] = True
+
+    select_disabled_cols = [c for c in df_select_view.columns if c != "เลือก"]
+    selected_table = st.data_editor(
+        df_select_view,
+        key="cal_plan_selector",
         use_container_width=True,
         hide_index=True,
+        num_rows="fixed",
+        disabled=select_disabled_cols,
     )
 
-    if st.button("💾 บันทึกแผนสอบเทียบทั้งหมด", use_container_width=True):
-        save_calibration_plan(edited_df)
-        st.rerun()
+    picked = selected_table[selected_table["เลือก"] == True]
+    if len(picked) > 0:
+        new_rowid = picked.index[0]
+        if new_rowid != st.session_state.get("cal_selected_rowid", None):
+            st.session_state["cal_selected_rowid"] = new_rowid
+            st.rerun()
+    else:
+        # if user unselects, keep previous selection (no hard reset) to avoid confusion
+        pass
+
+    # --- 3.2 Editable details section below ---
+    rowid = st.session_state.get("cal_selected_rowid", None)
+    if rowid is None or rowid not in df.index:
+        st.info("👆 เลือกรายการ 1 แถวจากตารางด้านบน เพื่อแสดงรายละเอียดสำหรับแก้ไข")
+    else:
+        rec_view = df.loc[rowid]
+        st.markdown(
+            """
+            <div class="mem-card">
+              <div class="mem-card-title">รายละเอียดรายการที่เลือก (แก้ไขง่าย)</div>
+              <div class="mem-card-subtitle">
+                แก้ไขข้อมูลสำคัญของรายการที่เลือก แล้วกด <b>บันทึก</b> เพื่อเขียนกลับไปยังไฟล์ Excel
+              </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        def _pick_col(candidates):
+            for c in candidates:
+                if c in df_raw.columns:
+                    return c
+            return None
+
+        # พยายามเดาคอลัมน์หลักจากชื่อที่พบบ่อย (รองรับทั้งไทย/อังกฤษ)
+        code_col = _pick_col(
+            [ASSET_CODE_COL, "รหัสครุภัณฑ์", "รหัส", "Asset Code", "Code", "Equipment Code", "รหัสเครื่องมือ"]
+        )
+        name_col = _pick_col(
+            ["ชื่อเครื่องมือ", "ชื่อครุภัณฑ์", "ชื่ออุปกรณ์", "ชื่อรายการ", "Equipment", "Equipment Name", "รายการ"]
+        )
+        dept_col = _pick_col(["หน่วยงาน", "แผนก", "ฝ่าย", "Department", "Dept"])
+        vendor_col = _pick_col(["ผู้รับจ้าง", "บริษัท", "Vendor", "ผู้สอบเทียบ", "หน่วยงานภายนอก"])
+        last_col = _pick_col(["Last M/D/Y", "วันที่สอบเทียบล่าสุด", "Last Calibration", "วันสอบเทียบล่าสุด"])
+        note_col = _pick_col(["หมายเหตุ", "Note", "Remark", "รายละเอียดเพิ่มเติม"])
+
+        # ค่าเริ่มต้น
+        cur_code = "" if code_col is None else ("" if pd.isna(df_raw.loc[rowid, code_col]) else str(df_raw.loc[rowid, code_col]))
+        cur_name = "" if name_col is None else ("" if pd.isna(df_raw.loc[rowid, name_col]) else str(df_raw.loc[rowid, name_col]))
+        cur_dept = "" if dept_col is None else ("" if pd.isna(df_raw.loc[rowid, dept_col]) else str(df_raw.loc[rowid, dept_col]))
+        cur_vendor = "" if vendor_col is None else ("" if pd.isna(df_raw.loc[rowid, vendor_col]) else str(df_raw.loc[rowid, vendor_col]))
+        cur_note = "" if note_col is None else ("" if pd.isna(df_raw.loc[rowid, note_col]) else str(df_raw.loc[rowid, note_col]))
+
+        # Date fields
+        cur_due_dt = pd.to_datetime(df_raw.loc[rowid, due_col], errors="coerce") if due_col else pd.NaT
+        cur_last_dt = pd.to_datetime(df_raw.loc[rowid, last_col], errors="coerce") if last_col else pd.NaT
+
+        with st.form("cal_detail_form", clear_on_submit=False):
+            c1, c2 = st.columns(2)
+
+            with c1:
+                v_code = st.text_input("รหัส / Code", value=cur_code, disabled=(code_col is None))
+                v_name = st.text_input("ชื่อเครื่องมือ / Equipment", value=cur_name, disabled=(name_col is None))
+                v_dept = st.text_input("หน่วยงาน / Department", value=cur_dept, disabled=(dept_col is None))
+
+            with c2:
+                v_vendor = st.text_input("ผู้รับจ้าง / Vendor", value=cur_vendor, disabled=(vendor_col is None))
+
+                # Last calibration date (optional)
+                if last_col is None:
+                    st.text_input("วันที่สอบเทียบล่าสุด (ไม่พบคอลัมน์)", value="", disabled=True)
+                    v_last_date = None
+                    v_last_clear = True
+                else:
+                    v_last_clear = st.checkbox(
+                        "ล้างวันที่สอบเทียบล่าสุด (ให้เป็นค่าว่าง)",
+                        value=pd.isna(cur_last_dt),
+                        key=f"cal_last_clear_{rowid}",
+                    )
+                    v_last_date = st.date_input(
+                        "วันที่สอบเทียบล่าสุด",
+                        value=(datetime.today().date() if pd.isna(cur_last_dt) else cur_last_dt.date()),
+                        key=f"cal_last_date_{rowid}",
+                        disabled=v_last_clear,
+                    )
+
+                # Due date (optional)
+                if due_col is None:
+                    st.text_input("Due Date (ไม่พบคอลัมน์)", value="", disabled=True)
+                    v_due_date = None
+                    v_due_clear = True
+                else:
+                    v_due_clear = st.checkbox(
+                        "ล้าง Due Date (ให้เป็นค่าว่าง)",
+                        value=pd.isna(cur_due_dt),
+                        key=f"cal_due_clear_{rowid}",
+                    )
+                    v_due_date = st.date_input(
+                        "Due Date (วันสอบเทียบถัดไป)",
+                        value=(datetime.today().date() if pd.isna(cur_due_dt) else cur_due_dt.date()),
+                        key=f"cal_due_date_{rowid}",
+                        disabled=v_due_clear,
+                    )
+
+            v_note = st.text_area("หมายเหตุ", value=cur_note, height=90, disabled=(note_col is None))
+
+            # Month 1–12 schedule (optional)
+            if month_cols:
+                with st.expander("ตารางทวนสอบเดือน 1–12 (ถ้าต้องการแก้ไข)", expanded=False):
+                    cols = st.columns(6)
+                    month_values = {}
+                    for i, mc in enumerate(month_cols):
+                        with cols[i % 6]:
+                            cur_v = "" if pd.isna(df_raw.loc[rowid, mc]) else str(df_raw.loc[rowid, mc])
+                            month_values[mc] = st.text_input(f"เดือน {mc}", value=cur_v, key=f"cal_m_{mc}_{rowid}")
+
+            submitted = st.form_submit_button("💾 บันทึกการแก้ไขรายการนี้", use_container_width=True)
+
+        # --- 3.3 Save button logic ---
+        if submitted:
+            # Update df_raw (source) at the selected row, then save back to Excel
+            if code_col is not None:
+                df_raw.loc[rowid, code_col] = v_code
+            if name_col is not None:
+                df_raw.loc[rowid, name_col] = v_name
+            if dept_col is not None:
+                df_raw.loc[rowid, dept_col] = v_dept
+            if vendor_col is not None:
+                df_raw.loc[rowid, vendor_col] = v_vendor
+            if note_col is not None:
+                df_raw.loc[rowid, note_col] = v_note
+
+            if last_col is not None:
+                df_raw.loc[rowid, last_col] = (pd.NaT if v_last_clear else pd.to_datetime(v_last_date))
+            if due_col is not None:
+                df_raw.loc[rowid, due_col] = (pd.NaT if v_due_clear else pd.to_datetime(v_due_date))
+
+            if month_cols:
+                for mc in month_cols:
+                    df_raw.loc[rowid, mc] = month_values.get(mc, df_raw.loc[rowid, mc])
+
+            save_calibration_plan(df_raw)
+            st.success("บันทึกแล้ว ✅")
+            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # --- (คงของเดิมไว้) โหมดแก้ไขทั้งตารางแบบเดิม ---
+    with st.expander("🛠️ โหมดขั้นสูง: แก้ไขทั้งตาราง (เหมือนเดิม)", expanded=False):
+        editable_cols = [c for c in df_raw.columns]
+        edited_df = st.data_editor(
+            df_raw[editable_cols],
+            key="cal_plan_editor",
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if st.button("💾 บันทึกแผนสอบเทียบทั้งหมด", use_container_width=True, key="cal_save_all"):
+            save_calibration_plan(edited_df)
+            st.rerun()
 
 # ====================================================================
 # หน้า "รายงานสรุป" – admin
