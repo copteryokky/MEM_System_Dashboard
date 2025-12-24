@@ -2802,100 +2802,176 @@ def page_calibration():
     st.markdown(summary_html, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### แผนสอบเทียบทั้งหมด (เลือกแถวเพื่อแก้ไขด้านล่าง)")
+    st.markdown("### แผนสอบเทียบทั้งหมด (คลิกแถวเพื่อดู/แก้ไขรายละเอียดด้านล่าง)")
 
-    # --- 3.1 Row selection (click/select) ---
-    # ใช้ checkbox คอลัมน์ "เลือก" เพื่อเลือกแถว (รองรับ single selection)
-    df_select_view = df.copy()
-    df_select_view.insert(0, "เลือก", False)
+    # --- 3.1 Row selection (click row) ---
+    # พยายามใช้การเลือกแถวด้วยการคลิก (รองรับ Streamlit รุ่นใหม่) ถ้าไม่รองรับจะ fallback ไปใช้ checkbox
+    df_table_view = df.copy()
+
+    # จัดรูปแบบวันที่ให้ดูง่ายในตาราง (เฉพาะแสดงผล ไม่กระทบ df_raw)
+    _df_display = df_table_view.copy()
+    for _dc in [due_col, "วันที่สอบเทียบล่าสุด", "Last Calibration Date"]:
+        if _dc and _dc in _df_display.columns:
+            try:
+                _df_display[_dc] = pd.to_datetime(_df_display[_dc], errors="coerce").dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
 
     selected_rowid = st.session_state.get("cal_selected_rowid", None)
-    if selected_rowid is not None and selected_rowid in df_select_view.index:
-        df_select_view.loc[selected_rowid, "เลือก"] = True
+    _selected_by_click = False
 
-    select_disabled_cols = [c for c in df_select_view.columns if c != "เลือก"]
-    selected_table = st.data_editor(
-        df_select_view,
-        key="cal_plan_selector",
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        disabled=select_disabled_cols,
-    )
+    try:
+        _event = st.dataframe(
+            _df_display,
+            key="cal_plan_table_click",
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+        )
+        if _event is not None and getattr(_event, "selection", None) is not None:
+            _rows = _event.selection.rows
+            if _rows:
+                _row_pos = _rows[0]
+                _rowid = int(_df_display.index[_row_pos])
+                if _rowid != selected_rowid:
+                    st.session_state["cal_selected_rowid"] = _rowid
+                selected_rowid = st.session_state.get("cal_selected_rowid", _rowid)
+                _selected_by_click = True
+    except TypeError:
+        _selected_by_click = False
+    except Exception:
+        _selected_by_click = False
 
-    picked = selected_table[selected_table["เลือก"] == True]
-    if len(picked) > 0:
-        new_rowid = picked.index[0]
-        if new_rowid != st.session_state.get("cal_selected_rowid", None):
-            st.session_state["cal_selected_rowid"] = new_rowid
-            st.rerun()
-    else:
-        # if user unselects, keep previous selection (no hard reset) to avoid confusion
-        pass
+    if not _selected_by_click:
+        # Fallback: ใช้ checkbox คอลัมน์ "เลือก" เพื่อเลือกแถว (รองรับทุกเวอร์ชัน)
+        df_select_view = df.copy()
+        if "เลือก" not in df_select_view.columns:
+            df_select_view.insert(0, "เลือก", False)
 
-    # --- 3.2 Editable details section below ---
+        if selected_rowid is not None and selected_rowid in df_select_view.index:
+            df_select_view.loc[selected_rowid, "เลือก"] = True
+
+        select_disabled_cols = [c for c in df_select_view.columns if c != "เลือก"]
+        selected_table = st.data_editor(
+            df_select_view,
+            key="cal_plan_selector",
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            disabled=select_disabled_cols,
+        )
+
+        picked = selected_table[selected_table["เลือก"] == True]
+        if len(picked) > 0:
+            new_rowid = int(picked.index[0])
+            if new_rowid != st.session_state.get("cal_selected_rowid", None):
+                st.session_state["cal_selected_rowid"] = new_rowid
+                st.rerun()
+
+    # --- 3.2 Details below the table (เหมือนฟอร์มรายละเอียดครุภัณฑ์) ---
     rowid = st.session_state.get("cal_selected_rowid", None)
-    if rowid is None or rowid not in df.index:
-        st.info("👆 เลือกรายการ 1 แถวจากตารางด้านบน เพื่อแสดงรายละเอียดสำหรับแก้ไข")
+
+    def _pick_col(candidates):
+        for c in candidates:
+            if c in df_raw.columns:
+                return c
+        return None
+
+    # พยายามเดาคอลัมน์หลักจากชื่อที่พบบ่อย (รองรับทั้งไทย/อังกฤษ)
+    code_col = _pick_col([ASSET_CODE_COL, "รหัสครุภัณฑ์", "รหัส", "Asset Code", "Code", "Equipment Code", "Equipment ID", "ID"])
+    name_col = _pick_col(["รายการ", "รายการเครื่องมือ", "ชื่อเครื่องมือ", "Equipment", "Equipment Name", "Name", "Item"])
+    dept_col = _pick_col(["หน่วยงาน", "แผนก", "Department", "Dept", "Section"])
+    vendor_col = _pick_col(["บริษัท", "ผู้ให้บริการ", "Vendor", "Supplier"])
+    last_col = _pick_col(["วันที่สอบเทียบล่าสุด", "Last Calibration Date", "Last Date", "LastCal", "Last"])
+    # due_col ถูกหาไว้ด้านบนแล้ว
+
+    # ปุ่มล้างการเลือก
+    if rowid is not None:
+        c_clear1, c_clear2 = st.columns([1, 4])
+        with c_clear1:
+            if st.button("✖ ยกเลิกการเลือก", use_container_width=True):
+                st.session_state["cal_selected_rowid"] = None
+                st.rerun()
+
+    if rowid is None:
+        st.info("👆 คลิกเลือกแถวในตารางด้านบนเพื่อเปิดฟอร์มรายละเอียดและแก้ไขข้อมูล")
     else:
-        rec_view = df.loc[rowid]
+        cur = df_raw.loc[rowid].copy()
+
+        # หาค่าบางอย่างเพื่อแสดงเป็นหัวฟอร์ม
+        _title_name = str(cur.get(name_col, "")) if name_col else ""
+        _title_code = str(cur.get(code_col, "")) if code_col else ""
+
+        # Status chip (ถ้ามี)
+        _status_text = str(df.loc[rowid, "สถานะกำหนด"]) if "สถานะกำหนด" in df.columns and rowid in df.index else ""
+        _days_left_val = df.loc[rowid, "days_left"] if "days_left" in df.columns and rowid in df.index else None
+
         st.markdown(
-            """
-            <div class="mem-card">
-              <div class="mem-card-title">รายละเอียดรายการที่เลือก (แก้ไขง่าย)</div>
-              <div class="mem-card-subtitle">
-                แก้ไขข้อมูลสำคัญของรายการที่เลือก แล้วกด <b>บันทึก</b> เพื่อเขียนกลับไปยังไฟล์ Excel
+            f'''
+            <div class="mem-card" style="padding: 18px 18px 10px 18px; margin-top: 8px;">
+              <div style="display:flex; align-items:flex-start; gap:12px;">
+                <div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#1565C0,#0D47A1);display:flex;align-items:center;justify-content:center;color:white;font-weight:900;">🧪</div>
+                <div style="flex:1;">
+                  <div style="font-size:20px;font-weight:800;color:#0f172a;line-height:1.2;">
+                    {_title_name if _title_name else "รายละเอียดรายการสอบเทียบ"}
+                  </div>
+                  <div style="margin-top:4px;color:#475569;font-size:13px;">
+                    รหัส: <b>{_title_code if _title_code else "-"}</b>
+                    {f' • สถานะ: <b>{_status_text}</b>' if _status_text else ''}
+                    {f' • เหลือ/เกินกำหนด: <b>{int(_days_left_val)}</b> วัน' if _days_left_val is not None and pd.notna(_days_left_val) else ''}
+                  </div>
+                </div>
               </div>
-            """,
+            </div>
+            ''',
             unsafe_allow_html=True,
         )
 
-        def _pick_col(candidates):
-            for c in candidates:
-                if c in df_raw.columns:
-                    return c
-            return None
+        with st.form(f"cal_detail_form_{rowid}", clear_on_submit=False):
+            st.markdown("#### ฟอร์มรายละเอียดรายการสอบเทียบ")
 
-        # พยายามเดาคอลัมน์หลักจากชื่อที่พบบ่อย (รองรับทั้งไทย/อังกฤษ)
-        code_col = _pick_col(
-            [ASSET_CODE_COL, "รหัสครุภัณฑ์", "รหัส", "Asset Code", "Code", "Equipment Code", "รหัสเครื่องมือ"]
-        )
-        name_col = _pick_col(
-            ["ชื่อเครื่องมือ", "ชื่อครุภัณฑ์", "ชื่ออุปกรณ์", "ชื่อรายการ", "Equipment", "Equipment Name", "รายการ"]
-        )
-        dept_col = _pick_col(["หน่วยงาน", "แผนก", "ฝ่าย", "Department", "Dept"])
-        vendor_col = _pick_col(["ผู้รับจ้าง", "บริษัท", "Vendor", "ผู้สอบเทียบ", "หน่วยงานภายนอก"])
-        last_col = _pick_col(["Last M/D/Y", "วันที่สอบเทียบล่าสุด", "Last Calibration", "วันสอบเทียบล่าสุด"])
-        note_col = _pick_col(["หมายเหตุ", "Note", "Remark", "รายละเอียดเพิ่มเติม"])
+            colA, colB = st.columns(2)
 
-        # ค่าเริ่มต้น
-        cur_code = "" if code_col is None else ("" if pd.isna(df_raw.loc[rowid, code_col]) else str(df_raw.loc[rowid, code_col]))
-        cur_name = "" if name_col is None else ("" if pd.isna(df_raw.loc[rowid, name_col]) else str(df_raw.loc[rowid, name_col]))
-        cur_dept = "" if dept_col is None else ("" if pd.isna(df_raw.loc[rowid, dept_col]) else str(df_raw.loc[rowid, dept_col]))
-        cur_vendor = "" if vendor_col is None else ("" if pd.isna(df_raw.loc[rowid, vendor_col]) else str(df_raw.loc[rowid, vendor_col]))
-        cur_note = "" if note_col is None else ("" if pd.isna(df_raw.loc[rowid, note_col]) else str(df_raw.loc[rowid, note_col]))
+            # --- กลุ่มข้อมูลหลัก ---
+            with colA:
+                st.markdown("**ข้อมูลหลัก**")
+                v_code = str(cur.get(code_col, "")) if code_col else ""
+                v_name = str(cur.get(name_col, "")) if name_col else ""
+                v_dept = str(cur.get(dept_col, "")) if dept_col else ""
 
-        # Date fields
-        cur_due_dt = pd.to_datetime(df_raw.loc[rowid, due_col], errors="coerce") if due_col else pd.NaT
-        cur_last_dt = pd.to_datetime(df_raw.loc[rowid, last_col], errors="coerce") if last_col else pd.NaT
+                if code_col is None:
+                    st.text_input("รหัสเครื่องมือ (ไม่พบคอลัมน์รหัส)", value=v_code, disabled=True)
+                else:
+                    v_code = st.text_input("รหัสเครื่องมือ", value=v_code, key=f"cal_code_{rowid}")
 
-        with st.form("cal_detail_form", clear_on_submit=False):
-            c1, c2 = st.columns(2)
+                if name_col is None:
+                    st.text_input("ชื่อ/รายการเครื่องมือ (ไม่พบคอลัมน์ชื่อ)", value=v_name, disabled=True)
+                else:
+                    v_name = st.text_input("ชื่อ/รายการเครื่องมือ", value=v_name, key=f"cal_name_{rowid}")
 
-            with c1:
-                v_code = st.text_input("รหัส / Code", value=cur_code, disabled=(code_col is None))
-                v_name = st.text_input("ชื่อเครื่องมือ / Equipment", value=cur_name, disabled=(name_col is None))
-                v_dept = st.text_input("หน่วยงาน / Department", value=cur_dept, disabled=(dept_col is None))
+                if dept_col is None:
+                    st.text_input("หน่วยงาน/แผนก (ไม่พบคอลัมน์)", value=v_dept, disabled=True)
+                else:
+                    v_dept = st.text_input("หน่วยงาน/แผนก", value=v_dept, key=f"cal_dept_{rowid}")
 
-            with c2:
-                v_vendor = st.text_input("ผู้รับจ้าง / Vendor", value=cur_vendor, disabled=(vendor_col is None))
+                v_vendor = str(cur.get(vendor_col, "")) if vendor_col else ""
+                if vendor_col is None:
+                    st.text_input("ผู้ให้บริการ/บริษัท (ไม่พบคอลัมน์)", value=v_vendor, disabled=True)
+                else:
+                    v_vendor = st.text_input("ผู้ให้บริการ/บริษัท", value=v_vendor, key=f"cal_vendor_{rowid}")
 
-                # Last calibration date (optional)
+            # --- กลุ่มวันสอบเทียบ ---
+            with colB:
+                st.markdown("**กำหนดการสอบเทียบ**")
+
+                # Last calibration date
                 if last_col is None:
                     st.text_input("วันที่สอบเทียบล่าสุด (ไม่พบคอลัมน์)", value="", disabled=True)
                     v_last_date = None
                     v_last_clear = True
                 else:
+                    cur_last_dt = pd.to_datetime(cur.get(last_col), errors="coerce")
                     v_last_clear = st.checkbox(
                         "ล้างวันที่สอบเทียบล่าสุด (ให้เป็นค่าว่าง)",
                         value=pd.isna(cur_last_dt),
@@ -2908,34 +2984,84 @@ def page_calibration():
                         disabled=v_last_clear,
                     )
 
-                # Due date (optional)
-                if due_col is None:
+                # Due date
+                if due_col is None or due_col not in df_raw.columns:
                     st.text_input("Due Date (ไม่พบคอลัมน์)", value="", disabled=True)
                     v_due_date = None
                     v_due_clear = True
                 else:
+                    cur_due_dt = pd.to_datetime(cur.get(due_col), errors="coerce")
                     v_due_clear = st.checkbox(
                         "ล้าง Due Date (ให้เป็นค่าว่าง)",
                         value=pd.isna(cur_due_dt),
                         key=f"cal_due_clear_{rowid}",
                     )
                     v_due_date = st.date_input(
-                        "Due Date (วันสอบเทียบถัดไป)",
+                        "Due Date (วันที่ครบกำหนดสอบเทียบ)",
                         value=(datetime.today().date() if pd.isna(cur_due_dt) else cur_due_dt.date()),
                         key=f"cal_due_date_{rowid}",
                         disabled=v_due_clear,
                     )
 
-            v_note = st.text_area("หมายเหตุ", value=cur_note, height=90, disabled=(note_col is None))
+                # Note
+                v_note = ""
+                if note_col and note_col in df_raw.columns:
+                    v_note = "" if pd.isna(cur.get(note_col)) else str(cur.get(note_col))
+                    v_note = st.text_area("หมายเหตุ", value=v_note, height=90, key=f"cal_note_{rowid}")
+                else:
+                    st.text_area("หมายเหตุ (ไม่พบคอลัมน์)", value="", disabled=True)
 
-            # Month 1–12 schedule (optional)
+            # --- ข้อมูลเพิ่มเติม (ทุกคอลัมน์ที่เหลือ) ---
+            handled = set([c for c in [code_col, name_col, dept_col, vendor_col, last_col, due_col, note_col] if c])
             if month_cols:
-                with st.expander("ตารางทวนสอบเดือน 1–12 (ถ้าต้องการแก้ไข)", expanded=False):
+                handled.update(month_cols)
+            handled.update(["days_left", "สถานะกำหนด"])
+
+            extra_cols = [c for c in df_raw.columns if c not in handled]
+
+            extra_values = {}
+            if extra_cols:
+                st.markdown("---")
+                st.markdown("**ข้อมูลเพิ่มเติม (คอลัมน์อื่น ๆ ในไฟล์)**")
+                # แสดงแบบ 2 คอลัมน์เพื่ออ่านง่าย
+                extra_left, extra_right = st.columns(2)
+                for i, c in enumerate(extra_cols):
+                    tgt = extra_left if i % 2 == 0 else extra_right
+                    with tgt:
+                        curv = cur.get(c, "")
+                        # พยายามแยกชนิดข้อมูล
+                        try:
+                            if pd.api.types.is_bool_dtype(df_raw[c]) or str(curv).lower() in ("true", "false"):
+                                v = st.checkbox(str(c), value=str(curv).lower()=="true", key=f"cal_extra_{c}_{rowid}")
+                            elif pd.api.types.is_numeric_dtype(df_raw[c]):
+                                v = st.number_input(str(c), value=float(curv) if str(curv).strip() not in ("", "nan") else 0.0, key=f"cal_extra_{c}_{rowid}")
+                            else:
+                                # ถ้าเหมือนวันเวลา ให้ใช้ date_input
+                                if isinstance(c, str) and ("date" in c.lower() or "วันที่" in c):
+                                    cur_dt = pd.to_datetime(curv, errors="coerce")
+                                    clear = st.checkbox(f"ล้าง {c}", value=pd.isna(cur_dt), key=f"cal_extra_clear_{c}_{rowid}")
+                                    v = st.date_input(
+                                        str(c),
+                                        value=(datetime.today().date() if pd.isna(cur_dt) else cur_dt.date()),
+                                        key=f"cal_extra_date_{c}_{rowid}",
+                                        disabled=clear,
+                                    )
+                                    extra_values[(c, "is_date")] = (v, clear)
+                                    continue
+                                v = st.text_input(str(c), value="" if pd.isna(curv) else str(curv), key=f"cal_extra_{c}_{rowid}")
+                        except Exception:
+                            v = st.text_input(str(c), value="" if pd.isna(curv) else str(curv), key=f"cal_extra_{c}_{rowid}")
+                        extra_values[c] = v
+
+            # --- แผนรายเดือน (ถ้ามี) ---
+            month_values = {}
+            if month_cols:
+                st.markdown("---")
+                with st.expander("📅 แผนรายเดือน (1-12)", expanded=False):
                     cols = st.columns(6)
-                    month_values = {}
                     for i, mc in enumerate(month_cols):
                         with cols[i % 6]:
-                            cur_v = "" if pd.isna(df_raw.loc[rowid, mc]) else str(df_raw.loc[rowid, mc])
+                            cur_v = "" if pd.isna(cur.get(mc)) else str(cur.get(mc))
                             month_values[mc] = st.text_input(f"เดือน {mc}", value=cur_v, key=f"cal_m_{mc}_{rowid}")
 
             submitted = st.form_submit_button("💾 บันทึกการแก้ไขรายการนี้", use_container_width=True)
@@ -2951,25 +3077,33 @@ def page_calibration():
                 df_raw.loc[rowid, dept_col] = v_dept
             if vendor_col is not None:
                 df_raw.loc[rowid, vendor_col] = v_vendor
-            if note_col is not None:
+            if note_col is not None and note_col in df_raw.columns:
                 df_raw.loc[rowid, note_col] = v_note
 
             if last_col is not None:
                 df_raw.loc[rowid, last_col] = (pd.NaT if v_last_clear else pd.to_datetime(v_last_date))
-            if due_col is not None:
+            if due_col is not None and due_col in df_raw.columns:
                 df_raw.loc[rowid, due_col] = (pd.NaT if v_due_clear else pd.to_datetime(v_due_date))
 
             if month_cols:
                 for mc in month_cols:
                     df_raw.loc[rowid, mc] = month_values.get(mc, df_raw.loc[rowid, mc])
 
+            # บันทึกคอลัมน์เพิ่มเติม
+            if extra_cols:
+                for c in extra_cols:
+                    if (c, "is_date") in extra_values:
+                        v, clear = extra_values[(c, "is_date")]
+                        df_raw.loc[rowid, c] = (pd.NaT if clear else pd.to_datetime(v))
+                    elif c in extra_values:
+                        df_raw.loc[rowid, c] = extra_values[c]
+
             save_calibration_plan(df_raw)
             st.success("บันทึกแล้ว ✅")
             st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- (คงของเดิมไว้) โหมดแก้ไขทั้งตารางแบบเดิม ---
     with st.expander("🛠️ โหมดขั้นสูง: แก้ไขทั้งตาราง (เหมือนเดิม)", expanded=False):
         editable_cols = [c for c in df_raw.columns]
         edited_df = st.data_editor(
