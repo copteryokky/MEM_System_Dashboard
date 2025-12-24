@@ -2563,28 +2563,68 @@ def page_calibration():
             """,
             unsafe_allow_html=True,
         )
+        # Month selector (left) + auto next month (right)
+        # Default = current month/year; user can change month/year normally
+        def _next_month(y: int, mo: int):
+            return (y + 1, 1) if mo == 12 else (y, mo + 1)
 
-        # (Keep the month selectors in the layout, but lock them to Current/Next month)
+        # Build year options from Due Date range + today (with buffer)
+        due_years = (
+            pd.to_datetime(df[due_col], errors="coerce").dt.year.dropna()
+            if due_col
+            else pd.Series([], dtype="float")
+        )
+        if not due_years.empty:
+            y_min = int(due_years.min())
+            y_max = int(due_years.max())
+        else:
+            y_min = int(today.year)
+            y_max = int(today.year)
+
+        y_min = min(y_min, int(today.year)) - 1
+        y_max = max(y_max, int(today.year)) + 1
+        years_list = list(range(y_min, y_max + 1))
+        ym_options = [(y, m_) for y in years_list for m_ in range(1, 13)]
+
+        def _fmt_ym(ym):
+            y, m_ = ym
+            return f"{THAI_MONTH_SHORT.get(int(m_), str(m_))} {int(y) + 543}"
+
+        default_ym = (int(today.year), int(today.month))
+        default_index = ym_options.index(default_ym) if default_ym in ym_options else 0
+
         col_sel1, col_sel2 = st.columns(2)
         with col_sel1:
-            st.selectbox(
-                "เดือนฝั่งซ้าย (เดือนปัจจุบัน)",
-                options=[left_month],
-                index=0,
-                format_func=lambda m: f"{THAI_MONTH_SHORT[m]} {left_year+543}",
-                key="cal_month_left_locked",
-                disabled=True,
-            )
-        with col_sel2:
-            st.selectbox(
-                "เดือนฝั่งขวา (เดือนถัดไป)",
-                options=[right_month],
-                index=0,
-                format_func=lambda m: f"{THAI_MONTH_SHORT[m]} {right_year+543}",
-                key="cal_month_right_locked",
-                disabled=True,
+            left_ym = st.selectbox(
+                "เดือนฝั่งซ้าย (เลือกได้)",
+                options=ym_options,
+                index=default_index,
+                format_func=_fmt_ym,
+                key="cal_left_ym",
             )
 
+        left_year, left_month = int(left_ym[0]), int(left_ym[1])
+        right_year, right_month = _next_month(left_year, left_month)
+
+        with col_sel2:
+            # Right month is always auto next month (locked)
+            # Streamlit versions differ: selectbox supports disabled in newer versions
+            try:
+                st.selectbox(
+                    "เดือนฝั่งขวา (เดือนถัดไปอัตโนมัติ)",
+                    options=[(right_year, right_month)],
+                    index=0,
+                    format_func=_fmt_ym,
+                    key="cal_right_ym",
+                    disabled=True,
+                )
+            except TypeError:
+                st.text_input(
+                    "เดือนฝั่งขวา (เดือนถัดไปอัตโนมัติ)",
+                    value=_fmt_ym((right_year, right_month)),
+                    key="cal_right_ym_text",
+                    disabled=True,
+                )
         st.markdown(
             """
             <div class="cal-legend">
@@ -2660,12 +2700,18 @@ def page_calibration():
     note_col = "หมายเหตุ" if "หมายเหตุ" in df.columns else _find_col_by_keywords(
         df.columns, ["note"]
     )
-
     if month_cols:
+        _month_opts_for_cards = [m for m, _ in month_cols]
+        _default_idx_for_cards = (
+            _month_opts_for_cards.index(left_month)
+            if "left_month" in locals() and left_month in _month_opts_for_cards
+            else (_month_opts_for_cards.index(int(today.month)) if int(today.month) in _month_opts_for_cards else 0)
+        )
+
         month_for_cards = st.selectbox(
             "เลือกเดือนสำหรับแสดงรายการ",
-            options=[m for m, _ in month_cols],
-            index=current_month - 1 if any(m == current_month for m, _ in month_cols) else 0,
+            options=_month_opts_for_cards,
+            index=_default_idx_for_cards,
             format_func=lambda m: THAI_MONTH_SHORT.get(m, str(m)),
             key="cal_month_cards",
         )
